@@ -78,7 +78,7 @@ function novoElemento(tipo: TipoElemento, paiId: string | null, xPct = 10, yPct 
 
     zIndex: 0,
 
-    corBorda: { tokenTailwind: null, hex: 'transparent' },
+    corBorda: { tokenTailwind: 'border-slate-300', hex: '#cbd5e1' },
     corTexto: { tokenTailwind: null, hex: 'inherit' },
     corFundo: { tokenTailwind: null, hex: 'transparent' },
 
@@ -89,7 +89,7 @@ function novoElemento(tipo: TipoElemento, paiId: string | null, xPct = 10, yPct 
     // === ESTILO AVANÇADO | inicio ===
     paddingPx: 0,
     gapPx: 0,
-    borderWidthPx: 0,
+    borderWidthPx: 1,
     radiusPx: 0,
     opacity: 1,
     sombra: 'nenhuma',
