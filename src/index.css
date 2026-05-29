@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* === GLOBAL | inicio === */
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+/* === GLOBAL | fim === */
+
+/* === VIEWPORT | inicio === */
+body { overflow: hidden; }
+/* === VIEWPORT | fim === */
+
+/* === FONTE GLOBAL | inicio === */
+:root { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+/* === FONTE GLOBAL | fim === */
