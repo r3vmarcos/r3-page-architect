@@ -109,6 +109,13 @@ type MenuSlot = {
 } | null
 // === SLOTS SAVE | fim ===
 
+type SelecaoArrasto = {
+  startX: number
+  startY: number
+  x: number
+  y: number
+}
+
 // === CANVAS | inicio ===
 export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void }) {
   const {
@@ -120,6 +127,7 @@ export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void
     elementoSelecionadoIds,
     selecionarElemento,
     alternarSelecaoElemento,
+    selecionarElementos,
     adicionarElemento,
     removerElemento,
     atualizarElemento,
@@ -132,6 +140,7 @@ export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void
     finalizarTransacaoHistorico,
     magnetismoAtivo,
     aninharAtivo,
+    bordaLocalizacaoAtiva,
   } = useEstadoBuilder()
 
   // === ESTADO UI | inicio ===
@@ -269,6 +278,7 @@ useEffect(() => {
 
   const [guias, setGuias] = useState<{ xPct?: number; yPct?: number } | null>(null)
   const [hoverPaiId, setHoverPaiId] = useState<string | null>(null)
+  const [selecaoArrasto, setSelecaoArrasto] = useState<SelecaoArrasto | null>(null)
 
   const [confirmarFilhoAberto, setConfirmarFilhoAberto] = useState(false)
   const [pendenteFilho, setPendenteFilho] = useState<null | {
@@ -281,6 +291,7 @@ useEffect(() => {
 
   const refArea = useRef<HTMLDivElement | null>(null)
   const refCanvasRoot = useRef<HTMLDivElement | null>(null)
+  const selecaoArrastoRef = useRef<SelecaoArrasto | null>(null)
 
   const raiz = useMemo(() => elementos.filter((e) => e.paiId === null), [elementos])
   const mapa = useMemo(() => new Map(elementos.map((e) => [e.id, e])), [elementos])
@@ -516,6 +527,85 @@ useEffect(() => {
     adicionarElemento(tipo, paiId, clamp(xPct, 0, 90), clamp(yPct, 0, 90))
   }
   // === DND (HTML5) PARA CRIAR | fim ===
+
+  // === SELECAO POR ARRASTO | inicio ===
+  function definirSelecaoArrasto(valor: SelecaoArrasto | null) {
+    selecaoArrastoRef.current = valor
+    setSelecaoArrasto(valor)
+  }
+
+  function pontoNoCanvas(e: React.PointerEvent | PointerEvent) {
+    const root = refCanvasRoot.current
+    if (!root) return { x: 0, y: 0 }
+    const rect = root.getBoundingClientRect()
+    return {
+      x: clamp(e.clientX - rect.left, 0, rect.width),
+      y: clamp(e.clientY - rect.top, 0, rect.height),
+    }
+  }
+
+  function iniciarSelecaoPorArrasto(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    if (e.target !== refCanvasRoot.current) return
+    const ponto = pontoNoCanvas(e)
+    const inicio = { startX: ponto.x, startY: ponto.y, x: ponto.x, y: ponto.y }
+    e.preventDefault()
+    selecionarElemento(null)
+    definirSelecaoArrasto(inicio)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function moverSelecaoPorArrasto(e: React.PointerEvent<HTMLDivElement>) {
+    const atual = selecaoArrastoRef.current
+    if (!atual) return
+    e.preventDefault()
+    const ponto = pontoNoCanvas(e)
+    definirSelecaoArrasto({ ...atual, x: ponto.x, y: ponto.y })
+  }
+
+  function finalizarSelecaoPorArrasto(e: React.PointerEvent<HTMLDivElement>) {
+    const atual = selecaoArrastoRef.current
+    if (!atual) return
+    e.preventDefault()
+    definirSelecaoArrasto(null)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+
+    const root = refCanvasRoot.current
+    if (!root) return
+    const base = root.getBoundingClientRect()
+    const left = Math.min(atual.startX, atual.x)
+    const top = Math.min(atual.startY, atual.y)
+    const right = Math.max(atual.startX, atual.x)
+    const bottom = Math.max(atual.startY, atual.y)
+    if (right - left < 4 && bottom - top < 4) {
+      selecionarElemento(null)
+      return
+    }
+
+    const ids = elementos
+      .filter((elemento) => {
+        const rect = rectDoElemento(elemento.id)
+        if (!rect) return false
+        const elLeft = rect.left - base.left
+        const elTop = rect.top - base.top
+        const elRight = rect.right - base.left
+        const elBottom = rect.bottom - base.top
+        return elRight >= left && elLeft <= right && elBottom >= top && elTop <= bottom
+      })
+      .map((elemento) => elemento.id)
+
+    selecionarElementos(ids)
+  }
+
+  const estiloSelecaoArrasto: CSSProperties | null = selecaoArrasto
+    ? {
+        left: Math.min(selecaoArrasto.startX, selecaoArrasto.x),
+        top: Math.min(selecaoArrasto.startY, selecaoArrasto.y),
+        width: Math.abs(selecaoArrasto.x - selecaoArrasto.startX),
+        height: Math.abs(selecaoArrasto.y - selecaoArrasto.startY),
+      }
+    : null
+  // === SELECAO POR ARRASTO | fim ===
 
   // === PROMPT MESTRE | inicio ===
   function gerarPromptMestre(modo: 'completo' | 'sem_estilos' | 'posicao', incluirInstrucoesLocal = true) {
@@ -908,8 +998,11 @@ function executarAcaoMenu(
                 backgroundColor: '#ffffff',
               }}
               onPointerDown={(e) => {
-                if (e.target === refCanvasRoot.current) selecionarElemento(null)
+                iniciarSelecaoPorArrasto(e)
               }}
+              onPointerMove={moverSelecaoPorArrasto}
+              onPointerUp={finalizarSelecaoPorArrasto}
+              onPointerCancel={finalizarSelecaoPorArrasto}
               onContextMenu={(e) => {
                 e.preventDefault()
                 const root = refCanvasRoot.current
@@ -949,6 +1042,13 @@ function executarAcaoMenu(
               ) : null}
               {/* === GUIAS OVERLAY | fim === */}
 
+              {estiloSelecaoArrasto ? (
+                <div
+                  className="absolute z-[90] pointer-events-none border border-indigo-500 bg-indigo-500/10"
+                  style={estiloSelecaoArrasto}
+                />
+              ) : null}
+
               {raiz.length === 0 ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 select-none pointer-events-none">
                   <MousePointerClick className="w-10 h-10 mb-2" />
@@ -966,6 +1066,7 @@ function executarAcaoMenu(
                   elementoSelecionadoIds={elementoSelecionadoIds}
                   magnetismoAtivo={magnetismoAtivo}
                   aninharAtivo={aninharAtivo}
+                  bordaLocalizacaoAtiva={bordaLocalizacaoAtiva}
                   selecionado={elementoSelecionadoIds.includes(elementoRaiz.id)}
                   onSelecionar={(id, multi) => (multi && id ? alternarSelecaoElemento(id) : selecionarElemento(id))}
                   onAtualizar={atualizarElemento}
@@ -1241,6 +1342,7 @@ function ElementoNoCanvas(props: {
   selecionado: boolean
   magnetismoAtivo: boolean
   aninharAtivo: boolean
+  bordaLocalizacaoAtiva: boolean
   onSelecionar: (id: string | null, multi?: boolean) => void
   onAtualizar: (id: string, parcial: Partial<ElementoBuilder>) => void
   onRemover: (id: string) => void
@@ -1607,6 +1709,10 @@ if (props.magnetismoAtivo) {
   const possuiBordaVisivel = (props.elemento.borderWidthPx ?? 0) > 0 && props.elemento.corBorda.hex !== 'transparent'
   const possuiCorTextoCustom = props.elemento.corTexto.hex !== 'inherit'
   const possuiCorFundoCustom = props.elemento.corFundo.hex !== 'transparent'
+  const sombraElemento = [
+    props.bordaLocalizacaoAtiva ? 'inset 0 0 0 1px #000, 0 0 0 1px #000' : '',
+    props.selecionado ? '0 0 0 2px rgba(99,102,241,.25), 0 10px 25px rgba(2,6,23,.18)' : obterSombraBuilder(props.elemento.sombra),
+  ].filter(Boolean).join(', ')
 
   const estilo: CSSProperties = {
     left: pct(props.elemento.xPct),
@@ -1624,9 +1730,7 @@ if (props.magnetismoAtivo) {
     borderWidth: possuiBordaVisivel ? (props.elemento.borderWidthPx ?? 0) : 0,
     borderRadius: props.elemento.radiusPx ?? 14,
     position: 'absolute',
-    boxShadow: props.selecionado
-      ? '0 0 0 2px rgba(99,102,241,.25), 0 10px 25px rgba(2,6,23,.18)'
-      : obterSombraBuilder(props.elemento.sombra),
+    boxShadow: sombraElemento,
     touchAction: 'none',
     userSelect: 'none',
   }
@@ -1689,6 +1793,7 @@ if (props.magnetismoAtivo) {
           elementoSelecionadoIds={props.elementoSelecionadoIds}
           magnetismoAtivo={props.magnetismoAtivo}
           aninharAtivo={props.aninharAtivo}
+          bordaLocalizacaoAtiva={props.bordaLocalizacaoAtiva}
           selecionado={props.elementoSelecionadoIds.includes(f.id)}
           onSelecionar={props.onSelecionar}
           onAtualizar={props.onAtualizar}
@@ -1706,7 +1811,7 @@ if (props.magnetismoAtivo) {
       {/* === FILHOS | fim === */}
 
       {/* === HANDLES (BORDAS + CANTOS) | inicio === */}
-      {!props.elemento.resizeTravado ? (
+      {props.selecionado && !props.elemento.resizeTravado ? (
         <>
           <HandleBorda dir="n" onDown={(e) => iniciarResize(e, 'n')} />
           <HandleBorda dir="s" onDown={(e) => iniciarResize(e, 's')} />

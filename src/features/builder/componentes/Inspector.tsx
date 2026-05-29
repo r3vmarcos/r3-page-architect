@@ -1,5 +1,18 @@
-import { useMemo, useState } from "react";
-import { Lock, LockOpen, Link2, Link2Off } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignHorizontalJustifyStart,
+  AlignHorizontalSpaceBetween,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart,
+  AlignVerticalSpaceBetween,
+  Lock,
+  LockOpen,
+  Link2,
+  Link2Off,
+} from "lucide-react";
 import { PaletaTailwind } from "./PaletaTailwind";
 import type { ElementoBuilder } from "@/types/tiposBuilder";
 import { useEstadoBuilder } from "@/features/builder/estadoBuilder";
@@ -186,29 +199,29 @@ export function Inspector(_props: { obterTamanhoCanvasPx: () => { w: number; h: 
       <div className="mt-3 rounded-2xl bg-slate-950 border border-slate-800 p-3">
         <div className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold mb-2">Geometria (%)</div>
         <div className="mb-3 grid grid-cols-3 gap-1.5">
-          <MiniBotao onClick={() => alinharElemento('left')}>Esq.</MiniBotao>
-          <MiniBotao onClick={() => alinharElemento('centerX')}>Centro</MiniBotao>
-          <MiniBotao onClick={() => alinharElemento('right')}>Dir.</MiniBotao>
-          <MiniBotao onClick={() => alinharElemento('top')}>Acima</MiniBotao>
-          <MiniBotao onClick={() => alinharElemento('centerY')}>Meio</MiniBotao>
-          <MiniBotao onClick={() => alinharElemento('bottom')}>Baixo</MiniBotao>
+          <MiniBotao title="Alinhar à esquerda" onClick={() => alinharElemento('left')}><AlignHorizontalJustifyStart className="w-4 h-4" /></MiniBotao>
+          <MiniBotao title="Centralizar horizontalmente" onClick={() => alinharElemento('centerX')}><AlignHorizontalJustifyCenter className="w-4 h-4" /></MiniBotao>
+          <MiniBotao title="Alinhar à direita" onClick={() => alinharElemento('right')}><AlignHorizontalJustifyEnd className="w-4 h-4" /></MiniBotao>
+          <MiniBotao title="Alinhar ao topo" onClick={() => alinharElemento('top')}><AlignVerticalJustifyStart className="w-4 h-4" /></MiniBotao>
+          <MiniBotao title="Centralizar verticalmente" onClick={() => alinharElemento('centerY')}><AlignVerticalJustifyCenter className="w-4 h-4" /></MiniBotao>
+          <MiniBotao title="Alinhar à base" onClick={() => alinharElemento('bottom')}><AlignVerticalJustifyEnd className="w-4 h-4" /></MiniBotao>
         </div>
 
         {elementosSelecionados.length >= 2 ? (
           <div className="mb-3 rounded-xl border border-slate-800 bg-slate-900/40 p-2">
             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold mb-2">Seleção ({elementosSelecionados.length})</div>
             <div className="grid grid-cols-3 gap-1.5">
-              <MiniBotao onClick={() => alinharSelecao('left')}>H esq.</MiniBotao>
-              <MiniBotao onClick={() => alinharSelecao('centerX')}>H meio</MiniBotao>
-              <MiniBotao onClick={() => alinharSelecao('right')}>H dir.</MiniBotao>
-              <MiniBotao onClick={() => alinharSelecao('top')}>V topo</MiniBotao>
-              <MiniBotao onClick={() => alinharSelecao('centerY')}>V meio</MiniBotao>
-              <MiniBotao onClick={() => alinharSelecao('bottom')}>V baixo</MiniBotao>
+              <MiniBotao title="Alinhar seleção à esquerda" onClick={() => alinharSelecao('left')}><AlignHorizontalJustifyStart className="w-4 h-4" /></MiniBotao>
+              <MiniBotao title="Centralizar seleção horizontalmente" onClick={() => alinharSelecao('centerX')}><AlignHorizontalJustifyCenter className="w-4 h-4" /></MiniBotao>
+              <MiniBotao title="Alinhar seleção à direita" onClick={() => alinharSelecao('right')}><AlignHorizontalJustifyEnd className="w-4 h-4" /></MiniBotao>
+              <MiniBotao title="Alinhar seleção ao topo" onClick={() => alinharSelecao('top')}><AlignVerticalJustifyStart className="w-4 h-4" /></MiniBotao>
+              <MiniBotao title="Centralizar seleção verticalmente" onClick={() => alinharSelecao('centerY')}><AlignVerticalJustifyCenter className="w-4 h-4" /></MiniBotao>
+              <MiniBotao title="Alinhar seleção à base" onClick={() => alinharSelecao('bottom')}><AlignVerticalJustifyEnd className="w-4 h-4" /></MiniBotao>
             </div>
             {elementosSelecionados.length >= 3 ? (
               <div className="mt-2 grid grid-cols-2 gap-1.5">
-                <MiniBotao onClick={() => distribuirSelecao('x')}>Distribuir H</MiniBotao>
-                <MiniBotao onClick={() => distribuirSelecao('y')}>Distribuir V</MiniBotao>
+                <MiniBotao title="Distribuir horizontalmente" onClick={() => distribuirSelecao('x')}><AlignHorizontalSpaceBetween className="w-4 h-4" /></MiniBotao>
+                <MiniBotao title="Distribuir verticalmente" onClick={() => distribuirSelecao('y')}><AlignVerticalSpaceBetween className="w-4 h-4" /></MiniBotao>
               </div>
             ) : null}
           </div>
@@ -449,12 +462,13 @@ function ResumoCor(props: { label: string; token: string | null; hex: string }) 
   );
 }
 
-function MiniBotao(props: { children: React.ReactNode; onClick: () => void }) {
+function MiniBotao(props: { children: ReactNode; onClick: () => void; title: string }) {
   return (
     <button
       type="button"
       onClick={props.onClick}
-      className="px-2 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-[10px] font-extrabold text-slate-200 hover:border-indigo-500"
+      title={props.title}
+      className="h-9 min-w-0 rounded-lg border border-slate-800 bg-slate-900 text-slate-200 hover:border-indigo-500 flex items-center justify-center"
     >
       {props.children}
     </button>

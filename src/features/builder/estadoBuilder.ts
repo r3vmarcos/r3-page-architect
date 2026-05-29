@@ -130,6 +130,7 @@ type AcoesBuilder = {
 
   setMagnetismoAtivo: (ativo: boolean) => void
   setAninharAtivo: (ativo: boolean) => void
+  setBordaLocalizacaoAtiva: (ativo: boolean) => void
 
   selecionarElemento: (id: string | null) => void
   alternarSelecaoElemento: (id: string) => void
@@ -208,6 +209,7 @@ const estadoInicial: EstadoBuilder = {
   resolucao: { larguraPx: 1920, alturaPx: 1080, colunas: 160, linhas: 90, mostrarGrade: true },
   magnetismoAtivo: true,
   aninharAtivo: true,
+  bordaLocalizacaoAtiva: false,
   elementos: [],
   elementoSelecionadoId: null,
   elementoSelecionadoIds: [],
@@ -300,6 +302,7 @@ const aplicarComHistorico = (fn: (s: EstadoBuilder) => Partial<EstadoBuilder>) =
 
       setMagnetismoAtivo: (ativo) => aplicarComHistorico(() => ({ magnetismoAtivo: ativo })),
       setAninharAtivo: (ativo) => aplicarComHistorico(() => ({ aninharAtivo: ativo })),
+      setBordaLocalizacaoAtiva: (ativo) => set({ bordaLocalizacaoAtiva: ativo }),
 
       selecionarElemento: (id) => set({ elementoSelecionadoId: id, elementoSelecionadoIds: id ? [id] : [] }),
       alternarSelecaoElemento: (id) =>
@@ -511,7 +514,7 @@ duplicarElemento: (id: string) =>
         const idsElementos = new Set(migrados.map((e: any) => e.id))
         const idsSelecionados = Array.isArray(s.elementoSelecionadoIds) ? s.elementoSelecionadoIds.filter((id: any) => typeof id === 'string' && idsElementos.has(id)) : []
         const selecionado = typeof s.elementoSelecionadoId === 'string' && idsElementos.has(s.elementoSelecionadoId) ? s.elementoSelecionadoId : (idsSelecionados[idsSelecionados.length - 1] ?? null)
-        return { ...s, elementos: migrados, elementoSelecionadoId: selecionado, elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []) }
+        return { ...s, bordaLocalizacaoAtiva: !!s.bordaLocalizacaoAtiva, elementos: migrados, elementoSelecionadoId: selecionado, elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []) }
       },
       partialize: (s) => ({
         stack: s.stack,
@@ -519,6 +522,7 @@ duplicarElemento: (id: string) =>
         resolucao: s.resolucao,
         magnetismoAtivo: s.magnetismoAtivo,
         aninharAtivo: s.aninharAtivo,
+        bordaLocalizacaoAtiva: s.bordaLocalizacaoAtiva,
         elementos: s.elementos,
         elementoSelecionadoId: s.elementoSelecionadoId,
         elementoSelecionadoIds: s.elementoSelecionadoIds,

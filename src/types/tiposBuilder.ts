@@ -219,6 +219,7 @@ export type EstadoBuilder = {
   resolucao: ResoluacaoCustom
   magnetismoAtivo: boolean
   aninharAtivo: boolean
+  bordaLocalizacaoAtiva: boolean
   elementos: ElementoBuilder[]
   elementoSelecionadoId: string | null
   elementoSelecionadoIds: string[]

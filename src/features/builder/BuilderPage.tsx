@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ExternalLink, LayoutDashboard, Settings, Monitor, Grid3X3, Magnet, Layers, Undo2, Redo2 } from "lucide-react";
+import { ChevronDown, ExternalLink, LayoutDashboard, Settings, Monitor, Grid3X3, Magnet, Layers, Undo2, Redo2, Square } from "lucide-react";
 import { useEstadoBuilder } from "./estadoBuilder";
 import type { TipoPresetResolucao, TipoStack } from "@/types/tiposBuilder";
 import { PainelPecas } from "./componentes/PainelPecas";
@@ -20,6 +20,8 @@ export function BuilderPage() {
     setMagnetismoAtivo,
     aninharAtivo,
     setAninharAtivo,
+    bordaLocalizacaoAtiva,
+    setBordaLocalizacaoAtiva,
     desfazer,
     refazer,
     podeDesfazer,
@@ -225,6 +227,15 @@ export function BuilderPage() {
               classAtivo="border-amber-500/40 text-amber-200 bg-amber-500/10"
             >
               <Layers className="w-4 h-4" />
+            </IconToggle>
+
+            <IconToggle
+              ativo={bordaLocalizacaoAtiva}
+              onClick={() => setBordaLocalizacaoAtiva(!bordaLocalizacaoAtiva)}
+              title={bordaLocalizacaoAtiva ? "Borda preta dos elementos (ON)" : "Borda preta dos elementos (OFF)"}
+              classAtivo="border-slate-100/60 text-white bg-slate-100/10"
+            >
+              <Square className="w-4 h-4" />
             </IconToggle>
           </div>
         </div>
