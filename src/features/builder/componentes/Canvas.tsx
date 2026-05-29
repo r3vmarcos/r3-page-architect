@@ -117,7 +117,9 @@ export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void
     resolucao,
     elementos,
     elementoSelecionadoId,
+    elementoSelecionadoIds,
     selecionarElemento,
+    alternarSelecaoElemento,
     adicionarElemento,
     removerElemento,
     atualizarElemento,
@@ -961,10 +963,11 @@ function executarAcaoMenu(
                   elemento={elementoRaiz}
                   mapa={mapa}
                   elementoSelecionadoId={elementoSelecionadoId}
+                  elementoSelecionadoIds={elementoSelecionadoIds}
                   magnetismoAtivo={magnetismoAtivo}
                   aninharAtivo={aninharAtivo}
-                  selecionado={elementoRaiz.id === elementoSelecionadoId}
-                  onSelecionar={selecionarElemento}
+                  selecionado={elementoSelecionadoIds.includes(elementoRaiz.id)}
+                  onSelecionar={(id, multi) => (multi && id ? alternarSelecaoElemento(id) : selecionarElemento(id))}
                   onAtualizar={atualizarElemento}
                   onRemover={removerElemento}
                   onTrazerParaFrente={trazerParaFrente}
@@ -1234,10 +1237,11 @@ function ElementoNoCanvas(props: {
   elemento: ElementoBuilder
   mapa: Map<string, ElementoBuilder>
   elementoSelecionadoId: string | null
+  elementoSelecionadoIds: string[]
   selecionado: boolean
   magnetismoAtivo: boolean
   aninharAtivo: boolean
-  onSelecionar: (id: string | null) => void
+  onSelecionar: (id: string | null, multi?: boolean) => void
   onAtualizar: (id: string, parcial: Partial<ElementoBuilder>) => void
   onRemover: (id: string) => void
   onTrazerParaFrente: (id: string) => void
@@ -1286,7 +1290,7 @@ function ElementoNoCanvas(props: {
 
     e.preventDefault()
     e.stopPropagation()
-    props.onSelecionar(props.elemento.id)
+    props.onSelecionar(props.elemento.id, e.shiftKey || e.ctrlKey || e.metaKey)
 
     if (props.elemento.moverTravado) return
 
@@ -1315,7 +1319,7 @@ function ElementoNoCanvas(props: {
     if (props.elemento.resizeTravado) return
     e.preventDefault()
     e.stopPropagation()
-    props.onSelecionar(props.elemento.id)
+    props.onSelecionar(props.elemento.id, e.shiftKey || e.ctrlKey || e.metaKey)
 
     const elDom = ref.current
     const paiDom = elDom?.parentElement as HTMLElement | null
@@ -1682,9 +1686,10 @@ if (props.magnetismoAtivo) {
           elemento={f}
           mapa={props.mapa}
           elementoSelecionadoId={props.elementoSelecionadoId}
+          elementoSelecionadoIds={props.elementoSelecionadoIds}
           magnetismoAtivo={props.magnetismoAtivo}
           aninharAtivo={props.aninharAtivo}
-          selecionado={f.id === props.elementoSelecionadoId}
+          selecionado={props.elementoSelecionadoIds.includes(f.id)}
           onSelecionar={props.onSelecionar}
           onAtualizar={props.onAtualizar}
           onRemover={props.onRemover}
@@ -1722,10 +1727,10 @@ if (props.magnetismoAtivo) {
 function HandleBorda(props: { dir: 'n' | 's' | 'e' | 'w'; onDown: (e: React.PointerEvent) => void }) {
   const base = 'absolute z-[70] bg-indigo-500/10'
   const map: Record<string, { className: string; cursor: string }> = {
-    n: { className: 'left-3 right-3 top-0 h-3', cursor: 'ns-resize' },
-    s: { className: 'left-3 right-3 bottom-0 h-3', cursor: 'ns-resize' },
-    e: { className: 'top-3 bottom-3 right-0 w-3', cursor: 'ew-resize' },
-    w: { className: 'top-3 bottom-3 left-0 w-3', cursor: 'ew-resize' },
+    n: { className: 'left-3 right-3 top-0 h-1.5', cursor: 'ns-resize' },
+    s: { className: 'left-3 right-3 bottom-0 h-1.5', cursor: 'ns-resize' },
+    e: { className: 'top-3 bottom-3 right-0 w-1.5', cursor: 'ew-resize' },
+    w: { className: 'top-3 bottom-3 left-0 w-1.5', cursor: 'ew-resize' },
   }
   const cfg = map[props.dir]
   return (

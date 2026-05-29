@@ -797,7 +797,7 @@ export function PainelPecas() {
   const [pecaEmFoco, setPecaEmFoco] =
     useState<ItemPeca | null>(null);
   const [infoAtiva, setInfoAtiva] =
-    useState(true);
+    useState(false);
   const [alturaArvorePx, setAlturaArvorePx] =
     useState(180);
   const resizeArvoreRef = useRef<{

@@ -132,6 +132,8 @@ type AcoesBuilder = {
   setAninharAtivo: (ativo: boolean) => void
 
   selecionarElemento: (id: string | null) => void
+  alternarSelecaoElemento: (id: string) => void
+  selecionarElementos: (ids: string[]) => void
   adicionarElemento: (tipo: TipoElemento, paiId: string | null, xPct?: number, yPct?: number) => void
   removerElemento: (id: string) => void
   atualizarElemento: (id: string, parcial: Partial<ElementoBuilder>) => void
@@ -208,6 +210,7 @@ const estadoInicial: EstadoBuilder = {
   aninharAtivo: true,
   elementos: [],
   elementoSelecionadoId: null,
+  elementoSelecionadoIds: [],
 }
 
 export const useEstadoBuilder = create<EstadoBuilder & AcoesBuilder & EstadoHistorico>()(
@@ -298,7 +301,14 @@ const aplicarComHistorico = (fn: (s: EstadoBuilder) => Partial<EstadoBuilder>) =
       setMagnetismoAtivo: (ativo) => aplicarComHistorico(() => ({ magnetismoAtivo: ativo })),
       setAninharAtivo: (ativo) => aplicarComHistorico(() => ({ aninharAtivo: ativo })),
 
-      selecionarElemento: (id) => set({ elementoSelecionadoId: id }),
+      selecionarElemento: (id) => set({ elementoSelecionadoId: id, elementoSelecionadoIds: id ? [id] : [] }),
+      alternarSelecaoElemento: (id) =>
+        set((s: any) => {
+          const atual: string[] = Array.isArray(s.elementoSelecionadoIds) ? s.elementoSelecionadoIds : []
+          const ids = atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]
+          return { elementoSelecionadoIds: ids, elementoSelecionadoId: ids[ids.length - 1] ?? null }
+        }),
+      selecionarElementos: (ids) => set({ elementoSelecionadoIds: ids, elementoSelecionadoId: ids[ids.length - 1] ?? null }),
 
       adicionarElemento: (tipo, paiId, xPct, yPct) =>
         aplicarComHistorico((s) => ({
@@ -498,7 +508,10 @@ duplicarElemento: (id: string) =>
           margemDirPx: typeof e.margemDirPx === 'number' ? e.margemDirPx : 0,
           instrucoes: typeof e.instrucoes === 'string' ? e.instrucoes : '',
         }))
-        return { ...s, elementos: migrados }
+        const idsElementos = new Set(migrados.map((e: any) => e.id))
+        const idsSelecionados = Array.isArray(s.elementoSelecionadoIds) ? s.elementoSelecionadoIds.filter((id: any) => typeof id === 'string' && idsElementos.has(id)) : []
+        const selecionado = typeof s.elementoSelecionadoId === 'string' && idsElementos.has(s.elementoSelecionadoId) ? s.elementoSelecionadoId : (idsSelecionados[idsSelecionados.length - 1] ?? null)
+        return { ...s, elementos: migrados, elementoSelecionadoId: selecionado, elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []) }
       },
       partialize: (s) => ({
         stack: s.stack,
@@ -508,6 +521,7 @@ duplicarElemento: (id: string) =>
         aninharAtivo: s.aninharAtivo,
         elementos: s.elementos,
         elementoSelecionadoId: s.elementoSelecionadoId,
+        elementoSelecionadoIds: s.elementoSelecionadoIds,
       }),
     },
   ),

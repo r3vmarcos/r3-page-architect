@@ -6,9 +6,10 @@ import { useEstadoBuilder } from "@/features/builder/estadoBuilder";
 
 // === INSPECTOR | inicio ===
 export function Inspector(_props: { obterTamanhoCanvasPx: () => { w: number; h: number } }) {
-  const { elementos, elementoSelecionadoId, selecionarElemento, atualizarElemento, removerElemento, iniciarTransacaoHistorico, finalizarTransacaoHistorico } = useEstadoBuilder();
+  const { elementos, elementoSelecionadoId, elementoSelecionadoIds, selecionarElemento, atualizarElemento, removerElemento, iniciarTransacaoHistorico, finalizarTransacaoHistorico } = useEstadoBuilder();
 
   const elemento = useMemo(() => elementos.find((e) => e.id === elementoSelecionadoId) ?? null, [elementos, elementoSelecionadoId]);
+  const elementosSelecionados = useMemo(() => elementoSelecionadoIds.map((id) => elementos.find((e) => e.id === id)).filter((e): e is ElementoBuilder => !!e), [elementoSelecionadoIds, elementos]);
 
   // === PAIS & BREADCRUMB | inicio ===
   const paiNome = useMemo(() => {
@@ -47,10 +48,58 @@ export function Inspector(_props: { obterTamanhoCanvasPx: () => { w: number; h: 
   function aplicarCor(alvo: "bg" | "text" | "border", token: string, hex: string) {
     if (!elemento) return;
     const parcial: Partial<ElementoBuilder> = {};
-    if (alvo === "border") parcial.corBorda = { tokenTailwind: token || null, hex };
-    if (alvo === "text") parcial.corTexto = { tokenTailwind: token || null, hex };
     if (alvo === "bg") parcial.corFundo = { tokenTailwind: token || null, hex };
     atualizarElemento(elemento.id, parcial);
+  }
+
+  function alinharElemento(alvo: 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom') {
+    if (!elemento) return;
+    const patch: Partial<ElementoBuilder> = {};
+    if (alvo === 'left') patch.xPct = 0;
+    if (alvo === 'centerX') patch.xPct = (100 - elemento.wPct) / 2;
+    if (alvo === 'right') patch.xPct = 100 - elemento.wPct;
+    if (alvo === 'top') patch.yPct = 0;
+    if (alvo === 'centerY') patch.yPct = (100 - elemento.hPct) / 2;
+    if (alvo === 'bottom') patch.yPct = 100 - elemento.hPct;
+    atualizarElemento(elemento.id, patch);
+  }
+
+  function alinharSelecao(alvo: 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom') {
+    if (elementosSelecionados.length < 2) return;
+    const minX = Math.min(...elementosSelecionados.map((e) => e.xPct));
+    const maxX = Math.max(...elementosSelecionados.map((e) => e.xPct + e.wPct));
+    const centroX = (minX + maxX) / 2;
+    const minY = Math.min(...elementosSelecionados.map((e) => e.yPct));
+    const maxY = Math.max(...elementosSelecionados.map((e) => e.yPct + e.hPct));
+    const centroY = (minY + maxY) / 2;
+    elementosSelecionados.forEach((e) => {
+      const patch: Partial<ElementoBuilder> = {};
+      if (alvo === 'left') patch.xPct = minX;
+      if (alvo === 'centerX') patch.xPct = centroX - e.wPct / 2;
+      if (alvo === 'right') patch.xPct = maxX - e.wPct;
+      if (alvo === 'top') patch.yPct = minY;
+      if (alvo === 'centerY') patch.yPct = centroY - e.hPct / 2;
+      if (alvo === 'bottom') patch.yPct = maxY - e.hPct;
+      atualizarElemento(e.id, patch);
+    });
+  }
+
+  function distribuirSelecao(eixo: 'x' | 'y') {
+    if (elementosSelecionados.length < 3) return;
+    const lista = [...elementosSelecionados].sort((a, b) => eixo === 'x' ? a.xPct - b.xPct : a.yPct - b.yPct);
+    const primeiro = lista[0];
+    const ultimo = lista[lista.length - 1];
+    if (eixo === 'x') {
+      const inicio = primeiro.xPct;
+      const fim = ultimo.xPct;
+      const passo = (fim - inicio) / (lista.length - 1);
+      lista.forEach((e, idx) => atualizarElemento(e.id, { xPct: inicio + passo * idx }));
+      return;
+    }
+    const inicio = primeiro.yPct;
+    const fim = ultimo.yPct;
+    const passo = (fim - inicio) / (lista.length - 1);
+    lista.forEach((e, idx) => atualizarElemento(e.id, { yPct: inicio + passo * idx }));
   }
   // === COR | fim ===
 
@@ -136,6 +185,34 @@ export function Inspector(_props: { obterTamanhoCanvasPx: () => { w: number; h: 
       {/* === GEOMETRIA + TRAVAS RELACIONADAS | inicio === */}
       <div className="mt-3 rounded-2xl bg-slate-950 border border-slate-800 p-3">
         <div className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold mb-2">Geometria (%)</div>
+        <div className="mb-3 grid grid-cols-3 gap-1.5">
+          <MiniBotao onClick={() => alinharElemento('left')}>Esq.</MiniBotao>
+          <MiniBotao onClick={() => alinharElemento('centerX')}>Centro</MiniBotao>
+          <MiniBotao onClick={() => alinharElemento('right')}>Dir.</MiniBotao>
+          <MiniBotao onClick={() => alinharElemento('top')}>Acima</MiniBotao>
+          <MiniBotao onClick={() => alinharElemento('centerY')}>Meio</MiniBotao>
+          <MiniBotao onClick={() => alinharElemento('bottom')}>Baixo</MiniBotao>
+        </div>
+
+        {elementosSelecionados.length >= 2 ? (
+          <div className="mb-3 rounded-xl border border-slate-800 bg-slate-900/40 p-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold mb-2">Seleção ({elementosSelecionados.length})</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <MiniBotao onClick={() => alinharSelecao('left')}>H esq.</MiniBotao>
+              <MiniBotao onClick={() => alinharSelecao('centerX')}>H meio</MiniBotao>
+              <MiniBotao onClick={() => alinharSelecao('right')}>H dir.</MiniBotao>
+              <MiniBotao onClick={() => alinharSelecao('top')}>V topo</MiniBotao>
+              <MiniBotao onClick={() => alinharSelecao('centerY')}>V meio</MiniBotao>
+              <MiniBotao onClick={() => alinharSelecao('bottom')}>V baixo</MiniBotao>
+            </div>
+            {elementosSelecionados.length >= 3 ? (
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <MiniBotao onClick={() => distribuirSelecao('x')}>Distribuir H</MiniBotao>
+                <MiniBotao onClick={() => distribuirSelecao('y')}>Distribuir V</MiniBotao>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Linha 1: X / Y / trava mover */}
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] items-end gap-2">
@@ -268,11 +345,7 @@ export function Inspector(_props: { obterTamanhoCanvasPx: () => { w: number; h: 
       <div className="mt-3 rounded-2xl bg-slate-950 border border-slate-800 p-3">
         <div className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold mb-2">Cores</div>
 
-        <div className="grid grid-cols-1 gap-2">
-          <ResumoCor label="Borda" token={elemento.corBorda.tokenTailwind} hex={elemento.corBorda.hex} />
-          <ResumoCor label="Texto" token={elemento.corTexto.tokenTailwind} hex={elemento.corTexto.hex} />
-          <ResumoCor label="Fundo" token={elemento.corFundo.tokenTailwind} hex={elemento.corFundo.hex} />
-        </div>
+        <ResumoCor label="Background" token={elemento.corFundo.tokenTailwind} hex={elemento.corFundo.hex} />
 
         <div className="mt-3">
           <PaletaTailwind onSelecionar={aplicarCor} />
@@ -373,6 +446,18 @@ function ResumoCor(props: { label: string; token: string | null; hex: string }) 
         {props.hex}
       </div>
     </div>
+  );
+}
+
+function MiniBotao(props: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className="px-2 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-[10px] font-extrabold text-slate-200 hover:border-indigo-500"
+    >
+      {props.children}
+    </button>
   );
 }
 

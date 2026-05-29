@@ -9,7 +9,7 @@ import {
 } from "@/utils/coresTailwind";
 
 // === PALETA TAILWIND | inicio ===
-type Aba = "bg" | "text" | "border";
+type Aba = "bg";
 type NomeCorTailwind =
   keyof typeof coresTailwind;
 type TomTailwind =
@@ -27,8 +27,7 @@ export function PaletaTailwind(props: {
       nomesCoresTailwind as NomeCorTailwind[],
     [],
   );
-  const [aba, setAba] =
-    useState<Aba>("bg"); // bg sempre selecionada por padrão
+  const aba: Aba = "bg";
   const [
     corSelecionada,
     setCorSelecionada,
@@ -60,12 +59,7 @@ export function PaletaTailwind(props: {
     cor: NomeCorTailwind,
     tom: TomTailwind,
   ) {
-    const prefixo =
-      alvo === "bg"
-        ? "bg"
-        : alvo === "text"
-          ? "text"
-          : "border";
+    const prefixo = "bg";
     return `${prefixo}-${cor}-${tom}`;
   }
 
@@ -74,79 +68,9 @@ export function PaletaTailwind(props: {
       {/* === HEADER | inicio === */}
       <div className="text-sm uppercase tracking-wider text-white font-extrabold mb-2">
         {" "}
-        Cores
+        Background
       </div>
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setAba("bg")}
-            className={`px-2 py-1 rounded-lg border text-[10px] font-extrabold ${
-              aba === "bg"
-                ? "bg-indigo-600 text-white border-indigo-500"
-                : "bg-slate-900 text-slate-200 border-slate-800 hover:border-indigo-500"
-            }`}
-          >
-            bg
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setAba("text")
-            }
-            className={`px-2 py-1 rounded-lg border text-[10px] font-extrabold ${
-              aba === "text"
-                ? "bg-indigo-600 text-white border-indigo-500"
-                : "bg-slate-900 text-slate-200 border-slate-800 hover:border-indigo-500"
-            }`}
-          >
-            text
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setAba("border")
-            }
-            className={`px-2 py-1 rounded-lg border text-[10px] font-extrabold ${
-              aba === "border"
-                ? "bg-indigo-600 text-white border-indigo-500"
-                : "bg-slate-900 text-slate-200 border-slate-800 hover:border-indigo-500"
-            }`}
-          >
-            border
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Hex picker */}
-          <label
-            className="w-7 h-7 rounded-full border-2 border-white/20 cursor-pointer hover:scale-105 transition-transform overflow-hidden"
-            title="Selecionar cor custom (HEX)"
-          >
-            <input
-              type="color"
-              className="w-full h-full opacity-0 cursor-pointer"
-              onChange={(e) =>
-                props.onSelecionar(
-                  aba,
-                  "",
-                  e.target.value,
-                )
-              }
-            />
-          </label>
-
-          {/* RGB picker (simples) */}
-          <button
-            type="button"
-            onClick={() =>
-              setMostrarRgb((v) => !v)
-            }
-            className="w-7 h-7 rounded-full border-2 border-white/20 hover:scale-105 transition-transform bg-slate-900"
-            title="Selecionar cor custom (RGB)"
-          />
-        </div>
-      </div>
+      <div className="mb-3 text-[10px] text-slate-400">Escolha uma cor ou use custom.</div>
       {/* === HEADER | fim === */}
 
       {/* === RGB PICKER | inicio === */}
@@ -254,6 +178,33 @@ export function PaletaTailwind(props: {
         </div>
 
         <div className="flex flex-wrap gap-1.5 ">
+          <label
+            className="w-7 h-7 rounded-md border-2 border-white/20 cursor-pointer hover:scale-105 transition-transform overflow-hidden"
+            style={{ background: "linear-gradient(135deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7)" }}
+            title="Custom HEX"
+          >
+            <input
+              type="color"
+              className="w-full h-full opacity-0 cursor-pointer"
+              onChange={(e) =>
+                props.onSelecionar(
+                  aba,
+                  "",
+                  e.target.value,
+                )
+              }
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() =>
+              setMostrarRgb((v) => !v)
+            }
+            className="w-7 h-7 rounded-md border-2 border-white/20 hover:scale-105 transition-transform bg-slate-900 text-[8px] font-extrabold text-slate-300"
+            title="Custom RGB"
+          >
+            RGB
+          </button>
           {grupos.map((cor) => {
             const hex = hex500(cor);
             const ativo =
@@ -266,7 +217,7 @@ export function PaletaTailwind(props: {
                 onClick={() =>
                   setCorSelecionada(cor)
                 }
-                className={`w-7 h-7 rounded-full border-2 transition ${
+                className={`w-7 h-7 rounded-md border-2 transition ${
                   ativo
                     ? "border-white shadow-[0_0_0_2px_rgba(99,102,241,.45)]"
                     : "border-white/20 hover:scale-105"

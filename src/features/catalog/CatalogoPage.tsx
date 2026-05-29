@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Copy, Search } from 'lucide-react'
+import { Copy, Plus, Search } from 'lucide-react'
 import { catalogoPro, catalogoReact, type ItemCatalogo } from './datasets'
 import { useEstadoBuilder } from '@/features/builder/estadoBuilder'
 
 // === CATÁLOGO PAGE | inicio ===
 export function CatalogoPage(props: { tipo: 'pro' | 'react' }) {
-  const { stack } = useEstadoBuilder()
+  const { stack, adicionarElementosEmLote, selecionarElemento } = useEstadoBuilder()
   const [busca, setBusca] = useState('')
 
   const dados = props.tipo === 'pro' ? catalogoPro : catalogoReact
@@ -37,6 +37,72 @@ ${item.prompt}`
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
+  }
+
+  function tipoDoItem(item: ItemCatalogo) {
+    if (item.id === 'p_header') return 'tag_header'
+    if (item.id === 'p_nav') return 'tag_nav'
+    if (item.id === 'p_main') return 'tag_main'
+    if (item.id.startsWith('p_h')) return item.id.replace('p_', 'tag_')
+    if (item.id === 'p_p') return 'tag_p'
+    if (item.id === 'p_span') return 'tag_span'
+    if (item.id === 'p_strong') return 'tag_strong'
+    if (item.id === 'p_em') return 'tag_em'
+    if (item.id === 'p_blockquote') return 'tag_blockquote'
+    if (item.id === 'p_pre_code') return 'tag_pre'
+    if (item.id === 'p_hr') return 'tag_hr'
+    if (item.id === 'p_ul') return 'tag_ul'
+    if (item.id === 'p_ol') return 'tag_ol'
+    if (item.id === 'p_dl') return 'tag_dl'
+    if (item.id === 'p_a') return 'tag_a'
+    if (item.id === 'p_img') return 'tag_img'
+    if (item.id === 'p_figure') return 'tag_figure'
+    if (item.id === 'p_iframe') return 'tag_iframe'
+    if (item.id === 'p_form') return 'tag_form'
+    if (item.id === 'p_table') return 'tag_table'
+    if (item.id === 'p_details') return 'tag_details'
+    if (item.id === 'p_svg') return 'tag_svg'
+    return 'tag_div'
+  }
+
+  function usarNoCanvas(item: ItemCatalogo) {
+    const id = 'el_' + Math.random().toString(36).slice(2, 10)
+    const tipo = tipoDoItem(item) as any
+    adicionarElementosEmLote([
+      {
+        id,
+        tipo,
+        nomeCustom: '',
+        descricao: item.nome,
+        paiId: null,
+        xPct: 10,
+        yPct: 10,
+        wPct: 30,
+        hPct: 14,
+        zIndex: 0,
+        corBorda: { tokenTailwind: null, hex: 'transparent' },
+        corTexto: { tokenTailwind: null, hex: 'inherit' },
+        corFundo: { tokenTailwind: null, hex: 'transparent' },
+        resizeTravado: false,
+        proporcaoTravada: false,
+        moverTravado: false,
+        paddingPx: 0,
+        gapPx: 0,
+        borderWidthPx: 0,
+        radiusPx: 14,
+        opacity: 1,
+        sombra: 'nenhuma',
+        blurBackdrop: false,
+        margemAtiva: false,
+        margemTopoPx: 0,
+        margemBaixoPx: 0,
+        margemEsqPx: 0,
+        margemDirPx: 0,
+        instrucoes: item.prompt,
+        props: { texto: item.nome.replace(/<[^>]+>/g, '').replace(/\(.+\)/, '').trim() || item.nome },
+      },
+    ], id)
+    selecionarElemento(id)
   }
 
   return (
@@ -77,12 +143,22 @@ ${item.prompt}`
                   <div className="text-white font-extrabold">{item.nome}</div>
                   <div className="text-slate-400 text-sm">{item.descricao}</div>
                 </div>
-                <button
-                  onClick={() => copiar(prompt)}
-                  className="shrink-0 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-2"
-                >
-                  <Copy className="w-4 h-4" /> Copiar
-                </button>
+                <div className="shrink-0 flex items-center gap-2">
+                  {props.tipo === 'pro' ? (
+                    <button
+                      onClick={() => usarNoCanvas(item)}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> Usar
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => copiar(prompt)}
+                    className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-2"
+                  >
+                    <Copy className="w-4 h-4" /> Copiar
+                  </button>
+                </div>
               </div>
 
               <div className="border-t border-slate-800 grid grid-cols-1 lg:grid-cols-[320px_1fr]">

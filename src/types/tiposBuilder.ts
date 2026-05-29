@@ -221,5 +221,6 @@ export type EstadoBuilder = {
   aninharAtivo: boolean
   elementos: ElementoBuilder[]
   elementoSelecionadoId: string | null
+  elementoSelecionadoIds: string[]
 }
 // === TIPOS BUILDER | fim ===
