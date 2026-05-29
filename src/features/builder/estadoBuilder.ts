@@ -90,7 +90,7 @@ function novoElemento(tipo: TipoElemento, paiId: string | null, xPct = 10, yPct 
     paddingPx: 0,
     gapPx: 0,
     borderWidthPx: 0,
-    radiusPx: 14,
+    radiusPx: 0,
     opacity: 1,
     sombra: 'nenhuma',
     blurBackdrop: false,
@@ -138,7 +138,7 @@ type AcoesBuilder = {
   adicionarElemento: (tipo: TipoElemento, paiId: string | null, xPct?: number, yPct?: number) => void
   removerElemento: (id: string) => void
   atualizarElemento: (id: string, parcial: Partial<ElementoBuilder>) => void
-  duplicarElemento: (id: string) => void
+  duplicarElemento: (id: string) => string | null
   adicionarElementosEmLote: (elementos: ElementoBuilder[], elementoSelecionadoId?: string | null) => void
   substituirLayout: (snapshot: SnapshotBuilder) => void
   mesclarLayoutImportado: (snapshot: SnapshotBuilder) => void
@@ -209,7 +209,7 @@ const estadoInicial: EstadoBuilder = {
   resolucao: { larguraPx: 1920, alturaPx: 1080, colunas: 160, linhas: 90, mostrarGrade: true },
   magnetismoAtivo: true,
   aninharAtivo: true,
-  bordaLocalizacaoAtiva: false,
+  bordaLocalizacaoAtiva: true,
   elementos: [],
   elementoSelecionadoId: null,
   elementoSelecionadoIds: [],
@@ -359,7 +359,8 @@ const aplicarComHistorico = (fn: (s: EstadoBuilder) => Partial<EstadoBuilder>) =
         aplicarComHistorico((s) => ({ elementos: s.elementos.map((e) => (e.id === id ? { ...e, ...parcial } : e)) })),
 
 
-duplicarElemento: (id: string) =>
+duplicarElemento: (id: string) => {
+  let idDuplicado: string | null = null
   aplicarComHistorico((s) => {
     const raiz = s.elementos.find((e) => e.id === id)
     if (!raiz) return {}
@@ -391,6 +392,7 @@ duplicarElemento: (id: string) =>
     todos.forEach((e) => mapaIds.set(e.id, gerarId()))
 
     const novoIdRaiz = mapaIds.get(raiz.id) as string
+    idDuplicado = novoIdRaiz
 
     // deslocamento leve para não ficar em cima
     const dx = 1.5
@@ -417,8 +419,11 @@ duplicarElemento: (id: string) =>
     return {
       elementos: [...s.elementos, ...clones],
       elementoSelecionadoId: novoIdRaiz,
+      elementoSelecionadoIds: [novoIdRaiz],
     }
-  }),
+  })
+  return idDuplicado
+},
 
       adicionarElementosEmLote: (elementosNovos, novoSelecionadoId = null) =>
         aplicarComHistorico((s) => {
@@ -484,7 +489,7 @@ duplicarElemento: (id: string) =>
     },
     {
       name: 'arquiteto_web_react_builder_v2',
-      version: 7,
+      version: 8,
       migrate: (persisted: any) => {
         const s = persisted ?? {}
         const elementos = Array.isArray(s.elementos) ? s.elementos : []
@@ -500,7 +505,7 @@ duplicarElemento: (id: string) =>
           paddingPx: typeof e.paddingPx === 'number' ? e.paddingPx : 0,
           gapPx: typeof e.gapPx === 'number' ? e.gapPx : 0,
           borderWidthPx: typeof e.borderWidthPx === 'number' ? e.borderWidthPx : 0,
-          radiusPx: typeof e.radiusPx === 'number' ? e.radiusPx : 14,
+          radiusPx: 0,
           opacity: typeof e.opacity === 'number' ? e.opacity : 1,
           sombra: (e.sombra === 'nenhuma' || e.sombra === 'sm' || e.sombra === 'md' || e.sombra === 'lg') ? e.sombra : 'md',
           blurBackdrop: !!e.blurBackdrop,
@@ -514,7 +519,7 @@ duplicarElemento: (id: string) =>
         const idsElementos = new Set(migrados.map((e: any) => e.id))
         const idsSelecionados = Array.isArray(s.elementoSelecionadoIds) ? s.elementoSelecionadoIds.filter((id: any) => typeof id === 'string' && idsElementos.has(id)) : []
         const selecionado = typeof s.elementoSelecionadoId === 'string' && idsElementos.has(s.elementoSelecionadoId) ? s.elementoSelecionadoId : (idsSelecionados[idsSelecionados.length - 1] ?? null)
-        return { ...s, bordaLocalizacaoAtiva: !!s.bordaLocalizacaoAtiva, elementos: migrados, elementoSelecionadoId: selecionado, elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []) }
+        return { ...s, bordaLocalizacaoAtiva: true, elementos: migrados, elementoSelecionadoId: selecionado, elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []) }
       },
       partialize: (s) => ({
         stack: s.stack,

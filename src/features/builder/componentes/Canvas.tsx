@@ -1071,6 +1071,7 @@ function executarAcaoMenu(
                   onSelecionar={(id, multi) => (multi && id ? alternarSelecaoElemento(id) : selecionarElemento(id))}
                   onAtualizar={atualizarElemento}
                   onRemover={removerElemento}
+                  onDuplicar={duplicarElemento}
                   onTrazerParaFrente={trazerParaFrente}
                   onSolicitarConfirmacaoFilho={solicitarConfirmacaoFilho}
                   onSetHoverPaiId={setHoverPaiId}
@@ -1346,6 +1347,7 @@ function ElementoNoCanvas(props: {
   onSelecionar: (id: string | null, multi?: boolean) => void
   onAtualizar: (id: string, parcial: Partial<ElementoBuilder>) => void
   onRemover: (id: string) => void
+  onDuplicar: (id: string) => string | null
   onTrazerParaFrente: (id: string) => void
   onSolicitarConfirmacaoFilho: (payload: { id: string; alvoPaiId: string; novoXPct: number; novoYPct: number }) => void
   onAbrirMenuContexto: (id: string, x: number, y: number) => void
@@ -1363,6 +1365,7 @@ function ElementoNoCanvas(props: {
 
   const interacaoRef = useRef<null | {
     modo: Modo
+    idAlvo: string
     alca?: Alca
     startX: number
     startY: number
@@ -1392,7 +1395,10 @@ function ElementoNoCanvas(props: {
 
     e.preventDefault()
     e.stopPropagation()
-    props.onSelecionar(props.elemento.id, e.shiftKey || e.ctrlKey || e.metaKey)
+    const duplicando = (e.ctrlKey || e.metaKey) && !e.shiftKey
+    const idAlvo = duplicando ? props.onDuplicar(props.elemento.id) : props.elemento.id
+    if (!idAlvo) return
+    props.onSelecionar(idAlvo, !duplicando && e.shiftKey)
 
     if (props.elemento.moverTravado) return
 
@@ -1405,6 +1411,7 @@ function ElementoNoCanvas(props: {
 
     interacaoRef.current = {
       modo: 'mover',
+      idAlvo,
       startX: e.clientX,
       startY: e.clientY,
       paiRect: { left: pr.left, top: pr.top, right: pr.right, bottom: pr.bottom, width: pr.width, height: pr.height },
@@ -1430,6 +1437,7 @@ function ElementoNoCanvas(props: {
     const pr = paiDom.getBoundingClientRect()
     interacaoRef.current = {
       modo: 'resize',
+      idAlvo: props.elemento.id,
       alca,
       startX: e.clientX,
       startY: e.clientY,
@@ -1512,24 +1520,31 @@ function ElementoNoCanvas(props: {
     ev.preventDefault()
 
     const ctx = interacaoRef.current
-    const dxPct = ((ev.clientX - ctx.startX) / ctx.paiRect.width) * 100
-    const dyPct = ((ev.clientY - ctx.startY) / ctx.paiRect.height) * 100
+    let dxPct = ((ev.clientX - ctx.startX) / ctx.paiRect.width) * 100
+    let dyPct = ((ev.clientY - ctx.startY) / ctx.paiRect.height) * 100
 
     if (ctx.modo === 'mover') {
-      let nx = clamp(ctx.startXPct + dxPct, 0, 100 - props.elemento.wPct)
-      let ny = clamp(ctx.startYPct + dyPct, 0, 100 - props.elemento.hPct)
+      if (ev.shiftKey) {
+        const dxPx = Math.abs(ev.clientX - ctx.startX)
+        const dyPx = Math.abs(ev.clientY - ctx.startY)
+        if (dxPx >= dyPx) dyPct = 0
+        else dxPct = 0
+      }
+
+      let nx = clamp(ctx.startXPct + dxPct, 0, 100 - ctx.startWPct)
+      let ny = clamp(ctx.startYPct + dyPct, 0, 100 - ctx.startHPct)
 
       const snap = aplicarMagnetismoPosicao(nx, ny)
       nx = snap.x
       ny = snap.y
       props.onSetGuias(snap.gx || snap.gy ? { xPct: snap.gx, yPct: snap.gy } : null)
 
-      props.onAtualizar(props.elemento.id, { xPct: nx, yPct: ny })
+      props.onAtualizar(ctx.idAlvo, { xPct: nx, yPct: ny })
 
       if (props.aninharAtivo) {
-        const cx = ctx.paiRect.left + ((nx + props.elemento.wPct / 2) / 100) * ctx.paiRect.width
-        const cy = ctx.paiRect.top + ((ny + props.elemento.hPct / 2) / 100) * ctx.paiRect.height
-        const alvo = encontrarContainerMaisProfundoPorPonto(cx, cy, props.elemento.id, props.mapa)
+        const cx = ctx.paiRect.left + ((nx + ctx.startWPct / 2) / 100) * ctx.paiRect.width
+        const cy = ctx.paiRect.top + ((ny + ctx.startHPct / 2) / 100) * ctx.paiRect.height
+        const alvo = encontrarContainerMaisProfundoPorPonto(cx, cy, ctx.idAlvo, props.mapa)
         props.onSetHoverPaiId(alvo)
       } else {
         props.onSetHoverPaiId(null)
@@ -1655,7 +1670,7 @@ if (props.magnetismoAtivo) {
 }
 // === MAGNETISMO RESIZE (CANTOS) | fim ===
 
-    props.onAtualizar(props.elemento.id, { xPct: x, yPct: y, wPct: w, hPct: h })
+    props.onAtualizar(ctx.idAlvo, { xPct: x, yPct: y, wPct: w, hPct: h })
     // === RESIZE | fim ===
   }
 
@@ -1669,13 +1684,13 @@ if (props.magnetismoAtivo) {
 
     // === ANINHAMENTO POR CENTRO (B) | inicio ===
     if (ctx.modo === 'mover' && props.aninharAtivo) {
-      const elDom = ref.current
+      const elDom = (document.querySelector(`[data-elemento-id="${ctx.idAlvo}"]`) as HTMLElement | null) ?? ref.current
       if (!elDom) return
 
       const r = elDom.getBoundingClientRect()
       const { cx, cy } = obterCentro({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height })
 
-      const alvo = encontrarContainerMaisProfundoPorPonto(cx, cy, props.elemento.id, props.mapa)
+      const alvo = encontrarContainerMaisProfundoPorPonto(cx, cy, ctx.idAlvo, props.mapa)
       if (!alvo) return
       if (alvo === props.elemento.paiId) return
 
@@ -1688,10 +1703,10 @@ if (props.magnetismoAtivo) {
       let novoXPct = (leftPx / rPai.width) * 100
       let novoYPct = (topPx / rPai.height) * 100
 
-      novoXPct = clamp(novoXPct, 0, 100 - props.elemento.wPct)
-      novoYPct = clamp(novoYPct, 0, 100 - props.elemento.hPct)
+      novoXPct = clamp(novoXPct, 0, 100 - ctx.startWPct)
+      novoYPct = clamp(novoYPct, 0, 100 - ctx.startHPct)
 
-      props.onSolicitarConfirmacaoFilho({ id: props.elemento.id, alvoPaiId: alvo, novoXPct, novoYPct })
+      props.onSolicitarConfirmacaoFilho({ id: ctx.idAlvo, alvoPaiId: alvo, novoXPct, novoYPct })
     }
     // === ANINHAMENTO POR CENTRO (B) | fim ===
   }
@@ -1728,7 +1743,7 @@ if (props.magnetismoAtivo) {
     backdropFilter: props.elemento.blurBackdrop ? 'blur(8px)' : undefined,
     borderStyle: possuiBordaVisivel ? (ehContainer(props.elemento.tipo) ? 'dashed' : 'solid') : undefined,
     borderWidth: possuiBordaVisivel ? (props.elemento.borderWidthPx ?? 0) : 0,
-    borderRadius: props.elemento.radiusPx ?? 14,
+    borderRadius: 0,
     position: 'absolute',
     boxShadow: sombraElemento,
     touchAction: 'none',
@@ -1798,6 +1813,7 @@ if (props.magnetismoAtivo) {
           onSelecionar={props.onSelecionar}
           onAtualizar={props.onAtualizar}
           onRemover={props.onRemover}
+          onDuplicar={props.onDuplicar}
           onTrazerParaFrente={props.onTrazerParaFrente}
           onSolicitarConfirmacaoFilho={props.onSolicitarConfirmacaoFilho}
           onAbrirMenuContexto={props.onAbrirMenuContexto}
