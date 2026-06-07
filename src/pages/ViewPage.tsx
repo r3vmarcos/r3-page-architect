@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ehContainer } from '@/features/builder/estadoBuilder'
-import type { ElementoBuilder } from '@/types/tiposBuilder'
+import type { ElementoBuilder, ReferenciaBuilder } from '@/types/tiposBuilder'
 import { extrairSnapshotBuilder, type SnapshotBuilder } from '@/features/builder/utils/layoutIO'
 import { ehVoidTagBuilder, montarClasseBuilder, obterSombraBuilder, tipoBuilderParaTag } from '@/features/builder/utils/renderBuilder'
 
@@ -25,11 +25,6 @@ function pct(n: number) {
   return `${n}%`
 }
 
-function calcularFit(availW: number, availH: number, aspecto: number) {
-  void aspecto
-  return { w: availW, h: availH }
-}
-
 function lerSnapshotLocalStorage(): SnapshotMonitor | null {
   try {
     const raw = localStorage.getItem(KEY_SNAPSHOT)
@@ -44,11 +39,11 @@ export default function ViewPage() {
   // === ESTADO | inicio ===
   const [snapshot, setSnapshot] = useState<SnapshotMonitor | null>(() => lerSnapshotLocalStorage())
   const [debug, setDebug] = useState<boolean>(() => localStorage.getItem('page_architect_monitor_debug') === '1')
-  const [fit, setFit] = useState({ w: 800, h: 450 })
   const ultimoPulseRef = useRef<string | null>(null)
   // === ESTADO | fim ===
 
-  const aspecto = (snapshot?.resolucao?.larguraPx ?? 1366) / (snapshot?.resolucao?.alturaPx ?? 768)
+  const larguraCanvas = snapshot?.resolucao?.larguraPx ?? 1366
+  const alturaCanvas = snapshot?.resolucao?.alturaPx ?? 768
 
   // === REALTIME (snapshot + pulse + broadcast + message) | inicio ===
   useEffect(() => {
@@ -150,18 +145,32 @@ export default function ViewPage() {
   }, [])
   // === DEBUG (D) | fim ===
 
-  // === FIT (sem depender do Tailwind) | inicio ===
+  // === SCROLL DO MONITOR | inicio ===
   useEffect(() => {
-    function recalcular() {
-      const availW = Math.max(100, window.innerWidth)
-      const availH = Math.max(100, window.innerHeight)
-      setFit(calcularFit(availW, availH, aspecto))
+    const overflowHtmlAnterior = document.documentElement.style.overflow
+    const overflowBodyAnterior = document.body.style.overflow
+    const larguraBodyAnterior = document.body.style.width
+    const alturaBodyAnterior = document.body.style.height
+    const minLarguraRootAnterior = document.documentElement.style.minWidth
+    const minAlturaRootAnterior = document.documentElement.style.minHeight
+
+    document.documentElement.style.overflow = 'auto'
+    document.body.style.overflow = 'auto'
+    document.body.style.width = `${larguraCanvas}px`
+    document.body.style.height = `${alturaCanvas}px`
+    document.documentElement.style.minWidth = `${larguraCanvas}px`
+    document.documentElement.style.minHeight = `${alturaCanvas}px`
+
+    return () => {
+      document.documentElement.style.overflow = overflowHtmlAnterior
+      document.body.style.overflow = overflowBodyAnterior
+      document.body.style.width = larguraBodyAnterior
+      document.body.style.height = alturaBodyAnterior
+      document.documentElement.style.minWidth = minLarguraRootAnterior
+      document.documentElement.style.minHeight = minAlturaRootAnterior
     }
-    recalcular()
-    window.addEventListener('resize', recalcular)
-    return () => window.removeEventListener('resize', recalcular)
-  }, [aspecto])
-  // === FIT | fim ===
+  }, [larguraCanvas, alturaCanvas])
+  // === SCROLL DO MONITOR | fim ===
 
   // === ÁRVORE | inicio ===
   const filhosPorPai = useMemo(() => {
@@ -185,23 +194,21 @@ export default function ViewPage() {
   }, [snapshot?.elementos])
 
   const raiz = filhosPorPai.get(null) ?? []
-  const semElementos = !snapshot || (snapshot.elementos?.length ?? 0) === 0
+  const referencias = snapshot?.referencias ?? []
+  const semElementos = !snapshot || ((snapshot.elementos?.length ?? 0) === 0 && referencias.length === 0)
   // === ÁRVORE | fim ===
 
   // === ESTILO ROOT (TELA LIMPA) | inicio ===
   const estiloRoot: CSSProperties = {
-    width: '100vw',
-    height: '100vh',
+    width: `${larguraCanvas}px`,
+    minWidth: '100vw',
+    minHeight: `${alturaCanvas}px`,
     background: '#ffffff',
-    overflow: 'hidden',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   }
 
   const estiloCanvas: CSSProperties = {
-    width: `${fit.w}px`,
-    height: `${fit.h}px`,
+    width: `${larguraCanvas}px`,
+    height: `${alturaCanvas}px`,
     position: 'relative',
     background: '#ffffff',
     overflow: 'hidden',
@@ -212,6 +219,10 @@ export default function ViewPage() {
   return (
     <div style={estiloRoot}>
       <div style={estiloCanvas}>
+        {referencias.map((referencia) => (
+          <RenderReferencia key={referencia.id} referencia={referencia} />
+        ))}
+
         {raiz.map((e) => (
           <RenderElemento key={e.id} elemento={e} filhosPorPai={filhosPorPai} debug={debug} />
         ))}
@@ -235,6 +246,23 @@ export default function ViewPage() {
       </div>
     </div>
   )
+}
+
+function RenderReferencia(props: { referencia: ReferenciaBuilder }) {
+  const r = props.referencia
+
+  const estilo: CSSProperties = {
+    position: 'absolute',
+    left: pct(r.xPct),
+    top: pct(r.yPct),
+    width: pct(r.wPct),
+    height: pct(r.hPct),
+    opacity: r.opacity,
+    zIndex: 0,
+    pointerEvents: 'none',
+  }
+
+  return <img src={r.src} alt={r.nome} draggable={false} style={estilo} />
 }
 
 function RenderElemento(props: { elemento: ElementoBuilder; filhosPorPai: Map<string | null, ElementoBuilder[]>; debug: boolean }) {

@@ -1,7 +1,7 @@
 import { create, type StoreApi } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { CorAplicada, EstadoBuilder, TipoElemento, TipoPresetResolucao, TipoStack, ElementoBuilder } from '@/types/tiposBuilder'
-import { clonarElementoBuilder, criarSnapshotBuilder, mesclarSnapshotBuilder, type SnapshotBuilder } from '@/features/builder/utils/layoutIO'
+import type { CorAplicada, EstadoBuilder, TipoElemento, TipoPresetResolucao, TipoStack, ElementoBuilder, ReferenciaBuilder } from '@/types/tiposBuilder'
+import { clonarElementoBuilder, clonarReferenciaBuilder, criarSnapshotBuilder, mesclarSnapshotBuilder, type SnapshotBuilder } from '@/features/builder/utils/layoutIO'
 
 // === HELPERS BUILDER STORE | inicio ===
 function gerarId(): string {
@@ -139,6 +139,10 @@ type AcoesBuilder = {
   removerElemento: (id: string) => void
   atualizarElemento: (id: string, parcial: Partial<ElementoBuilder>) => void
   duplicarElemento: (id: string) => string | null
+  selecionarReferencia: (id: string | null) => void
+  adicionarReferencia: (referencia: Omit<ReferenciaBuilder, 'id'>) => string
+  atualizarReferencia: (id: string, parcial: Partial<ReferenciaBuilder>) => void
+  removerReferencia: (id: string) => void
   adicionarElementosEmLote: (elementos: ElementoBuilder[], elementoSelecionadoId?: string | null) => void
   substituirLayout: (snapshot: SnapshotBuilder) => void
   mesclarLayoutImportado: (snapshot: SnapshotBuilder) => void
@@ -160,7 +164,7 @@ type AcoesBuilder = {
 // === HISTÓRICO (UNDO/REDO) | inicio ===
 const MAX_HISTORICO = 60
 
-type SnapshotHistorico = Pick<EstadoBuilder, 'stack' | 'presetResolucao' | 'resolucao' | 'magnetismoAtivo' | 'aninharAtivo' | 'elementos' | 'elementoSelecionadoId'>
+type SnapshotHistorico = Pick<EstadoBuilder, 'stack' | 'presetResolucao' | 'resolucao' | 'magnetismoAtivo' | 'aninharAtivo' | 'elementos' | 'elementoSelecionadoId' | 'referencias' | 'referenciaSelecionadaId'>
 
 type EstadoHistorico = {
   historicoPassado: SnapshotHistorico[]
@@ -186,15 +190,20 @@ function criarSnapshotHistorico(s: EstadoBuilder): SnapshotHistorico {
     aninharAtivo: s.aninharAtivo,
     elementos: clonarElementosParaHistorico(s.elementos),
     elementoSelecionadoId: s.elementoSelecionadoId,
+    referencias: s.referencias.map((referencia) => clonarReferenciaBuilder(referencia)),
+    referenciaSelecionadaId: s.referenciaSelecionadaId,
   }
 }
 
 function normalizarSelecao(snapshot: SnapshotHistorico): SnapshotHistorico {
   const ids = new Set(snapshot.elementos.map((e) => e.id))
   const sel = snapshot.elementoSelecionadoId
+  const idsReferencias = new Set(snapshot.referencias.map((referencia) => referencia.id))
+  const referenciaSelecionadaId = snapshot.referenciaSelecionadaId
   return {
     ...snapshot,
     elementoSelecionadoId: sel && ids.has(sel) ? sel : null,
+    referenciaSelecionadaId: referenciaSelecionadaId && idsReferencias.has(referenciaSelecionadaId) ? referenciaSelecionadaId : null,
   }
 }
 
@@ -213,6 +222,8 @@ const estadoInicial: EstadoBuilder = {
   elementos: [],
   elementoSelecionadoId: null,
   elementoSelecionadoIds: [],
+  referencias: [],
+  referenciaSelecionadaId: null,
 }
 
 export const useEstadoBuilder = create<EstadoBuilder & AcoesBuilder & EstadoHistorico>()(
@@ -313,6 +324,8 @@ const aplicarComHistorico = (fn: (s: EstadoBuilder) => Partial<EstadoBuilder>) =
         }),
       selecionarElementos: (ids) => set({ elementoSelecionadoIds: ids, elementoSelecionadoId: ids[ids.length - 1] ?? null }),
 
+      selecionarReferencia: (id) => set({ referenciaSelecionadaId: id }),
+
       adicionarElemento: (tipo, paiId, xPct, yPct) =>
         aplicarComHistorico((s) => ({
           elementos: [...s.elementos, novoElemento(tipo, paiId, xPct ?? 10, yPct ?? 10)],
@@ -358,9 +371,30 @@ const aplicarComHistorico = (fn: (s: EstadoBuilder) => Partial<EstadoBuilder>) =
       atualizarElemento: (id, parcial) =>
         aplicarComHistorico((s) => ({ elementos: s.elementos.map((e) => (e.id === id ? { ...e, ...parcial } : e)) })),
 
+      adicionarReferencia: (referencia) => {
+        const id = 'ref_' + Math.random().toString(36).slice(2, 10)
+        aplicarComHistorico((s) => ({
+          referencias: [...s.referencias, { ...referencia, id }],
+          referenciaSelecionadaId: id,
+        }))
+        return id
+      },
+
+      atualizarReferencia: (id, parcial) =>
+        aplicarComHistorico((s) => ({
+          referencias: s.referencias.map((referencia) => (referencia.id === id ? { ...referencia, ...parcial } : referencia)),
+        })),
+
+      removerReferencia: (id) =>
+        aplicarComHistorico((s) => ({
+          referencias: s.referencias.filter((referencia) => referencia.id !== id),
+          referenciaSelecionadaId: s.referenciaSelecionadaId === id ? null : s.referenciaSelecionadaId,
+        })),
+
 
 duplicarElemento: (id: string) => {
-  let idDuplicado: string | null = null
+  let novoIdDuplicado: string | null = null
+
   aplicarComHistorico((s) => {
     const raiz = s.elementos.find((e) => e.id === id)
     if (!raiz) return {}
@@ -392,7 +426,7 @@ duplicarElemento: (id: string) => {
     todos.forEach((e) => mapaIds.set(e.id, gerarId()))
 
     const novoIdRaiz = mapaIds.get(raiz.id) as string
-    idDuplicado = novoIdRaiz
+    novoIdDuplicado = novoIdRaiz
 
     // deslocamento leve para não ficar em cima
     const dx = 1.5
@@ -422,7 +456,8 @@ duplicarElemento: (id: string) => {
       elementoSelecionadoIds: [novoIdRaiz],
     }
   })
-  return idDuplicado
+
+  return novoIdDuplicado
 },
 
       adicionarElementosEmLote: (elementosNovos, novoSelecionadoId = null) =>
@@ -489,7 +524,7 @@ duplicarElemento: (id: string) => {
     },
     {
       name: 'arquiteto_web_react_builder_v2',
-      version: 8,
+      version: 9,
       migrate: (persisted: any) => {
         const s = persisted ?? {}
         const elementos = Array.isArray(s.elementos) ? s.elementos : []
@@ -519,7 +554,25 @@ duplicarElemento: (id: string) => {
         const idsElementos = new Set(migrados.map((e: any) => e.id))
         const idsSelecionados = Array.isArray(s.elementoSelecionadoIds) ? s.elementoSelecionadoIds.filter((id: any) => typeof id === 'string' && idsElementos.has(id)) : []
         const selecionado = typeof s.elementoSelecionadoId === 'string' && idsElementos.has(s.elementoSelecionadoId) ? s.elementoSelecionadoId : (idsSelecionados[idsSelecionados.length - 1] ?? null)
-        return { ...s, bordaLocalizacaoAtiva: true, elementos: migrados, elementoSelecionadoId: selecionado, elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []) }
+        const referencias: ReferenciaBuilder[] = Array.isArray(s.referencias)
+          ? s.referencias.filter((referencia: unknown): referencia is ReferenciaBuilder =>
+              typeof referencia === 'object' &&
+              referencia !== null &&
+              typeof (referencia as ReferenciaBuilder).id === 'string' &&
+              typeof (referencia as ReferenciaBuilder).src === 'string',
+            )
+          : []
+        const idsReferencias = new Set(referencias.map((referencia) => referencia.id))
+        const referenciaSelecionadaId = typeof s.referenciaSelecionadaId === 'string' && idsReferencias.has(s.referenciaSelecionadaId) ? s.referenciaSelecionadaId : null
+        return {
+          ...s,
+          bordaLocalizacaoAtiva: true,
+          elementos: migrados,
+          elementoSelecionadoId: selecionado,
+          elementoSelecionadoIds: idsSelecionados.length ? idsSelecionados : (selecionado ? [selecionado] : []),
+          referencias,
+          referenciaSelecionadaId,
+        }
       },
       partialize: (s) => ({
         stack: s.stack,
@@ -531,6 +584,8 @@ duplicarElemento: (id: string) => {
         elementos: s.elementos,
         elementoSelecionadoId: s.elementoSelecionadoId,
         elementoSelecionadoIds: s.elementoSelecionadoIds,
+        referencias: s.referencias,
+        referenciaSelecionadaId: s.referenciaSelecionadaId,
       }),
     },
   ),
@@ -553,7 +608,7 @@ export const apiEstadoBuilder: Pick<StoreApi<EstadoBuilder & AcoesBuilder>, 'get
 
 type SnapshotRealtime = Pick<
   EstadoBuilder,
-  'stack' | 'presetResolucao' | 'resolucao' | 'magnetismoAtivo' | 'aninharAtivo' | 'elementos' | 'elementoSelecionadoId'
+  'stack' | 'presetResolucao' | 'resolucao' | 'magnetismoAtivo' | 'aninharAtivo' | 'elementos' | 'elementoSelecionadoId' | 'referencias' | 'referenciaSelecionadaId'
 >
 
 const NOME_CANAL_REALTIME = 'page_architect_realtime_v2'
@@ -569,6 +624,8 @@ function montarSnapshotRealtime(s: EstadoBuilder): SnapshotRealtime {
     aninharAtivo: s.aninharAtivo,
     elementos: s.elementos,
     elementoSelecionadoId: s.elementoSelecionadoId,
+    referencias: s.referencias,
+    referenciaSelecionadaId: s.referenciaSelecionadaId,
   }
 }
 

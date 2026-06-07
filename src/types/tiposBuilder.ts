@@ -213,6 +213,18 @@ export type ElementoBuilder = {
   props: Record<string, any>
 }
 
+export type ReferenciaBuilder = {
+  id: string
+  nome: string
+  src: string
+  xPct: number
+  yPct: number
+  wPct: number
+  hPct: number
+  aspectRatio: number
+  opacity: number
+}
+
 export type EstadoBuilder = {
   stack: TipoStack
   presetResolucao: TipoPresetResolucao
@@ -223,5 +235,7 @@ export type EstadoBuilder = {
   elementos: ElementoBuilder[]
   elementoSelecionadoId: string | null
   elementoSelecionadoIds: string[]
+  referencias: ReferenciaBuilder[]
+  referenciaSelecionadaId: string | null
 }
 // === TIPOS BUILDER | fim ===

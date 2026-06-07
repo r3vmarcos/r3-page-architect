@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Bot, MousePointerClick, Trash2, Upload, Download, Save } from 'lucide-react'
+import { Bot, ClipboardPaste, Download, ImagePlus, Layers, MousePointerClick, Save, Trash2, Upload } from 'lucide-react'
 import { useEstadoBuilder, ehContainer } from '@/features/builder/estadoBuilder'
 import { clonarClipboardNaPosicao, coletarSubarvoreBuilder, criarArquivoLayout, criarSnapshotBuilder, extrairSnapshotBuilder, mesclarSnapshotBuilder, type ClipboardElementos } from '@/features/builder/utils/layoutIO'
 import { obterSombraBuilder } from '@/features/builder/utils/renderBuilder'
-import type { ElementoBuilder, TipoElemento } from '@/types/tiposBuilder'
+import type { ElementoBuilder, ReferenciaBuilder, TipoElemento } from '@/types/tiposBuilder'
 import { ModalPromptMestre } from './ModalPromptMestre'
 import { ModalConfirmarFilho } from './ModalConfirmarFilho'
 
 // === HELPERS CANVAS | inicio ===
 type Retangulo = { left: number; top: number; right: number; bottom: number; width: number; height: number }
+type ModoCamadaCanvas = 'componentes' | 'referencias'
 
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v))
@@ -27,6 +28,24 @@ function calcularFit(availW: number, availH: number, aspecto: number) {
   const width = Math.min(availW, wPorAltura)
   const height = width / aspecto
   return { width, height }
+}
+
+function lerArquivoComoDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+    reader.onerror = () => reject(reader.error ?? new Error('Falha ao ler imagem.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function obterDimensoesImagem(src: string): Promise<{ largura: number; altura: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve({ largura: img.naturalWidth || 1, altura: img.naturalHeight || 1 })
+    img.onerror = () => reject(new Error('Falha ao carregar imagem.'))
+    img.src = src
+  })
 }
 
 function rectDoCanvas() {
@@ -109,13 +128,6 @@ type MenuSlot = {
 } | null
 // === SLOTS SAVE | fim ===
 
-type SelecaoArrasto = {
-  startX: number
-  startY: number
-  x: number
-  y: number
-}
-
 // === CANVAS | inicio ===
 export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void }) {
   const {
@@ -125,13 +137,18 @@ export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void
     elementos,
     elementoSelecionadoId,
     elementoSelecionadoIds,
+    referencias,
+    referenciaSelecionadaId,
     selecionarElemento,
     alternarSelecaoElemento,
-    selecionarElementos,
+    selecionarReferencia,
     adicionarElemento,
     removerElemento,
     atualizarElemento,
     duplicarElemento,
+    adicionarReferencia,
+    atualizarReferencia,
+    removerReferencia,
     adicionarElementosEmLote,
     substituirLayout,
     mesclarLayoutImportado,
@@ -148,6 +165,8 @@ export function Canvas(props: { onObterTamanhoPx: (w: number, h: number) => void
   const [prompt, setPrompt] = useState<string>('')
   const [modoPrompt, setModoPrompt] = useState<'completo' | 'sem_estilos' | 'posicao'>('completo')
   const [incluirInstrucoes, setIncluirInstrucoes] = useState(true)
+  const [modoCamada, setModoCamada] = useState<ModoCamadaCanvas>('componentes')
+  const inputReferenciaRef = useRef<HTMLInputElement | null>(null)
 
 // === PROMPT (REGERAR AO TROCAR MODO) | inicio ===
 useEffect(() => {
@@ -182,6 +201,8 @@ function snapshotAtual() {
     aninharAtivo,
     elementos,
     elementoSelecionadoId,
+    referencias,
+    referenciaSelecionadaId,
   })
 }
 
@@ -198,6 +219,8 @@ function criarSlotVazio(indice: number): ArquivoSlot {
       aninharAtivo: true,
       elementos: [],
       elementoSelecionadoId: null,
+      referencias: [],
+      referenciaSelecionadaId: null,
     }),
   }
 }
@@ -278,7 +301,6 @@ useEffect(() => {
 
   const [guias, setGuias] = useState<{ xPct?: number; yPct?: number } | null>(null)
   const [hoverPaiId, setHoverPaiId] = useState<string | null>(null)
-  const [selecaoArrasto, setSelecaoArrasto] = useState<SelecaoArrasto | null>(null)
 
   const [confirmarFilhoAberto, setConfirmarFilhoAberto] = useState(false)
   const [pendenteFilho, setPendenteFilho] = useState<null | {
@@ -291,7 +313,6 @@ useEffect(() => {
 
   const refArea = useRef<HTMLDivElement | null>(null)
   const refCanvasRoot = useRef<HTMLDivElement | null>(null)
-  const selecaoArrastoRef = useRef<SelecaoArrasto | null>(null)
 
   const raiz = useMemo(() => elementos.filter((e) => e.paiId === null), [elementos])
   const mapa = useMemo(() => new Map(elementos.map((e) => [e.id, e])), [elementos])
@@ -306,17 +327,21 @@ useEffect(() => {
 
     const ro = new ResizeObserver(() => {
       const r = area.getBoundingClientRect()
+      if (presetResolucao === 'Custom') {
+        setFit({ width: resolucao.larguraPx, height: resolucao.alturaPx })
+        return
+      }
       setFit(calcularFit(r.width, r.height, aspecto))
     })
 
     ro.observe(area)
     const r0 = area.getBoundingClientRect()
-    setFit(calcularFit(r0.width, r0.height, aspecto))
+    setFit(presetResolucao === 'Custom' ? { width: resolucao.larguraPx, height: resolucao.alturaPx } : calcularFit(r0.width, r0.height, aspecto))
 
   
 
   return () => ro.disconnect()
-  }, [aspecto])
+  }, [aspecto, presetResolucao, resolucao.larguraPx, resolucao.alturaPx])
   // === FIT OBSERVER | fim ===
 
   // === LAYOUT (IMPORT/EXPORT) | inicio ===
@@ -329,6 +354,8 @@ useEffect(() => {
       aninharAtivo,
       elementos,
       elementoSelecionadoId,
+      referencias,
+      referenciaSelecionadaId,
     })
     const arquivo = criarArquivoLayout(payload)
     const blob = new Blob([JSON.stringify(arquivo, null, 2)], { type: 'application/json' })
@@ -376,6 +403,76 @@ useEffect(() => {
     })
   }
   // === LAYOUT (IMPORT/EXPORT) | fim ===
+
+  // === REFERENCIAS (IMPORTAR/COLAR IMAGEM) | inicio ===
+  async function adicionarImagemReferencia(file: File) {
+    if (!file.type.startsWith('image/')) return
+
+    const src = await lerArquivoComoDataUrl(file)
+    const dimensoes = await obterDimensoesImagem(src)
+    const aspectRatio = dimensoes.largura / Math.max(1, dimensoes.altura)
+    const wPct = Math.min(70, Math.max(20, (dimensoes.largura / resolucao.larguraPx) * 100))
+    const hPct = Math.min(90, Math.max(10, wPct / aspectRatio))
+    const id = adicionarReferencia({
+      nome: file.name || 'Referência colada',
+      src,
+      xPct: 5,
+      yPct: 5,
+      wPct,
+      hPct,
+      aspectRatio,
+      opacity: 0.55,
+    })
+
+    selecionarReferencia(id)
+    selecionarElemento(null)
+    setModoCamada('referencias')
+  }
+
+  async function importarReferenciaArquivo(file: File | null | undefined) {
+    if (!file) return
+    try {
+      await adicionarImagemReferencia(file)
+    } catch {
+      alert('Não foi possível importar a imagem.')
+    }
+  }
+
+  async function colarReferenciaClipboard() {
+    if (!('clipboard' in navigator) || !('read' in navigator.clipboard)) {
+      alert('Use Ctrl+V para colar a imagem da área de transferência.')
+      return
+    }
+
+    try {
+      const itens = await navigator.clipboard.read()
+      for (const item of itens) {
+        const tipoImagem = item.types.find((tipo) => tipo.startsWith('image/'))
+        if (!tipoImagem) continue
+        const blob = await item.getType(tipoImagem)
+        await adicionarImagemReferencia(new File([blob], 'print-colado.png', { type: tipoImagem }))
+        return
+      }
+      alert('Não encontrei imagem na área de transferência.')
+    } catch {
+      alert('Não foi possível ler a área de transferência. Tente Ctrl+V.')
+    }
+  }
+
+  useEffect(() => {
+    async function onPaste(e: ClipboardEvent) {
+      const itens = Array.from(e.clipboardData?.items ?? [])
+      const imagem = itens.find((item) => item.type.startsWith('image/'))
+      const file = imagem?.getAsFile()
+      if (!file) return
+      e.preventDefault()
+      await importarReferenciaArquivo(file)
+    }
+
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [resolucao.larguraPx, adicionarReferencia, selecionarElemento, selecionarReferencia])
+  // === REFERENCIAS (IMPORTAR/COLAR IMAGEM) | fim ===
 
 
   // === INFORMA TAMANHO PARA INSPECTOR | inicio ===
@@ -494,11 +591,13 @@ useEffect(() => {
 
   // === DND (HTML5) PARA CRIAR | inicio ===
   function onDragOver(e: React.DragEvent) {
+    if (modoCamada !== 'componentes') return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
   }
 
   function onDropCanvas(e: React.DragEvent) {
+    if (modoCamada !== 'componentes') return
     // evita duplicar quando o drop foi em um container interno
     if (e.target !== e.currentTarget) return
 
@@ -514,6 +613,7 @@ useEffect(() => {
   }
 
   function onDropEmContainer(e: React.DragEvent, paiId: string) {
+    if (modoCamada !== 'componentes') return
     e.preventDefault()
     e.stopPropagation()
 
@@ -527,85 +627,6 @@ useEffect(() => {
     adicionarElemento(tipo, paiId, clamp(xPct, 0, 90), clamp(yPct, 0, 90))
   }
   // === DND (HTML5) PARA CRIAR | fim ===
-
-  // === SELECAO POR ARRASTO | inicio ===
-  function definirSelecaoArrasto(valor: SelecaoArrasto | null) {
-    selecaoArrastoRef.current = valor
-    setSelecaoArrasto(valor)
-  }
-
-  function pontoNoCanvas(e: React.PointerEvent | PointerEvent) {
-    const root = refCanvasRoot.current
-    if (!root) return { x: 0, y: 0 }
-    const rect = root.getBoundingClientRect()
-    return {
-      x: clamp(e.clientX - rect.left, 0, rect.width),
-      y: clamp(e.clientY - rect.top, 0, rect.height),
-    }
-  }
-
-  function iniciarSelecaoPorArrasto(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0) return
-    if (e.target !== refCanvasRoot.current) return
-    const ponto = pontoNoCanvas(e)
-    const inicio = { startX: ponto.x, startY: ponto.y, x: ponto.x, y: ponto.y }
-    e.preventDefault()
-    selecionarElemento(null)
-    definirSelecaoArrasto(inicio)
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  function moverSelecaoPorArrasto(e: React.PointerEvent<HTMLDivElement>) {
-    const atual = selecaoArrastoRef.current
-    if (!atual) return
-    e.preventDefault()
-    const ponto = pontoNoCanvas(e)
-    definirSelecaoArrasto({ ...atual, x: ponto.x, y: ponto.y })
-  }
-
-  function finalizarSelecaoPorArrasto(e: React.PointerEvent<HTMLDivElement>) {
-    const atual = selecaoArrastoRef.current
-    if (!atual) return
-    e.preventDefault()
-    definirSelecaoArrasto(null)
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-
-    const root = refCanvasRoot.current
-    if (!root) return
-    const base = root.getBoundingClientRect()
-    const left = Math.min(atual.startX, atual.x)
-    const top = Math.min(atual.startY, atual.y)
-    const right = Math.max(atual.startX, atual.x)
-    const bottom = Math.max(atual.startY, atual.y)
-    if (right - left < 4 && bottom - top < 4) {
-      selecionarElemento(null)
-      return
-    }
-
-    const ids = elementos
-      .filter((elemento) => {
-        const rect = rectDoElemento(elemento.id)
-        if (!rect) return false
-        const elLeft = rect.left - base.left
-        const elTop = rect.top - base.top
-        const elRight = rect.right - base.left
-        const elBottom = rect.bottom - base.top
-        return elRight >= left && elLeft <= right && elBottom >= top && elTop <= bottom
-      })
-      .map((elemento) => elemento.id)
-
-    selecionarElementos(ids)
-  }
-
-  const estiloSelecaoArrasto: CSSProperties | null = selecaoArrasto
-    ? {
-        left: Math.min(selecaoArrasto.startX, selecaoArrasto.x),
-        top: Math.min(selecaoArrasto.startY, selecaoArrasto.y),
-        width: Math.abs(selecaoArrasto.x - selecaoArrasto.startX),
-        height: Math.abs(selecaoArrasto.y - selecaoArrasto.startY),
-      }
-    : null
-  // === SELECAO POR ARRASTO | fim ===
 
   // === PROMPT MESTRE | inicio ===
   function gerarPromptMestre(modo: 'completo' | 'sem_estilos' | 'posicao', incluirInstrucoesLocal = true) {
@@ -791,7 +812,8 @@ function executarAcaoMenu(
   } else if (acao === 'deletar') {
     removerElemento(id)
   } else if (acao === 'duplicar') {
-    duplicarElemento(id)
+    const novoId = duplicarElemento(id)
+    if (novoId) selecionarElemento(novoId)
   } else if (acao === 'fit_w') {
     atualizarElemento(id, { xPct: 0, wPct: 100 })
   } else if (acao === 'fit_h') {
@@ -816,6 +838,17 @@ function executarAcaoMenu(
       {/* === BARRA TOPO | inicio === */}
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
+          <input
+            ref={inputReferenciaRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              void importarReferenciaArquivo(e.target.files?.[0])
+              e.currentTarget.value = ''
+            }}
+          />
+
           <button
             onClick={() => salvarNoSlot(slotAtivo)}
             className={
@@ -827,11 +860,50 @@ function executarAcaoMenu(
             <Save className="w-4 h-4" />
           </button>
 
+          <div className="flex items-center rounded-xl border border-slate-800 bg-slate-950 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setModoCamada('componentes')
+                selecionarReferencia(null)
+              }}
+              className={
+                'h-8 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2 ' +
+                (modoCamada === 'componentes' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-900')
+              }
+              title="Selecionar componentes"
+            >
+              <Layers className="w-4 h-4" />
+              Componentes
+            </button>
+
+            <button
+              type="button"
+              disabled={referencias.length === 0}
+              onClick={() => {
+                setModoCamada('referencias')
+                selecionarElemento(null)
+              }}
+              className={
+                'h-8 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2 ' +
+                (referencias.length === 0
+                  ? 'text-slate-600 cursor-not-allowed'
+                  : modoCamada === 'referencias'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'text-slate-300 hover:bg-slate-900')
+              }
+              title={referencias.length === 0 ? 'Insira uma imagem para habilitar referências' : 'Selecionar referências'}
+            >
+              <ImagePlus className="w-4 h-4" />
+              Referências
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             {slots.map((slot, idx) => {
               const i = idx + 1
               const ativo = i === slotAtivo
-              const vazio = !slot.salvoEm && slot.payload.elementos.length === 0
+              const vazio = !slot.salvoEm && slot.payload.elementos.length === 0 && slot.payload.referencias.length === 0
 
               return (
                 <button
@@ -859,6 +931,22 @@ function executarAcaoMenu(
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => inputReferenciaRef.current?.click()}
+            className="w-10 h-10 rounded-xl border border-slate-800 bg-slate-950 hover:border-amber-500 flex items-center justify-center"
+            title="Importar imagem de referência"
+          >
+            <ImagePlus className="w-4 h-4 text-amber-200" />
+          </button>
+
+          <button
+            onClick={() => void colarReferenciaClipboard()}
+            className="w-10 h-10 rounded-xl border border-slate-800 bg-slate-950 hover:border-amber-500 flex items-center justify-center"
+            title="Colar print da área de transferência"
+          >
+            <ClipboardPaste className="w-4 h-4 text-amber-200" />
+          </button>
+
           <button
             onClick={() => setLayoutAberto(true)}
             className="w-10 h-10 rounded-xl border border-slate-800 bg-slate-950 hover:border-indigo-500 flex items-center justify-center"
@@ -963,7 +1051,7 @@ function executarAcaoMenu(
         ref={refArea}
         className="flex-1 min-h-0 rounded-2xl border border-slate-800 bg-slate-950/40 p-3 overflow-auto"
       >
-        <div className="h-full w-full flex items-center justify-center">
+        <div className={'h-full w-full flex ' + (presetResolucao === 'Custom' ? 'items-start justify-start' : 'items-center justify-center')}>
           <div
             className="relative bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xl"
             style={{ width: fit.width, height: fit.height }}
@@ -973,6 +1061,7 @@ function executarAcaoMenu(
               data-canvas-root="1"
               className="absolute inset-0"
               onPointerDownCapture={(e) => {
+                if (modoCamada !== 'componentes') return
                 if (!e.altKey) return
                 const lista = (document.elementsFromPoint(e.clientX, e.clientY) as HTMLElement[])
                   .map((node) => node.dataset?.elementoId)
@@ -998,11 +1087,10 @@ function executarAcaoMenu(
                 backgroundColor: '#ffffff',
               }}
               onPointerDown={(e) => {
-                iniciarSelecaoPorArrasto(e)
+                if (e.target !== refCanvasRoot.current) return
+                if (modoCamada === 'componentes') selecionarElemento(null)
+                else selecionarReferencia(null)
               }}
-              onPointerMove={moverSelecaoPorArrasto}
-              onPointerUp={finalizarSelecaoPorArrasto}
-              onPointerCancel={finalizarSelecaoPorArrasto}
               onContextMenu={(e) => {
                 e.preventDefault()
                 const root = refCanvasRoot.current
@@ -1042,14 +1130,27 @@ function executarAcaoMenu(
               ) : null}
               {/* === GUIAS OVERLAY | fim === */}
 
-              {estiloSelecaoArrasto ? (
-                <div
-                  className="absolute z-[90] pointer-events-none border border-indigo-500 bg-indigo-500/10"
-                  style={estiloSelecaoArrasto}
+              {referencias.map((referencia) => (
+                <ReferenciaNoCanvas
+                  key={referencia.id}
+                  referencia={referencia}
+                  selecionada={modoCamada === 'referencias' && referenciaSelecionadaId === referencia.id}
+                  interacaoAtiva={modoCamada === 'referencias'}
+                  onSelecionar={(id) => {
+                    selecionarReferencia(id)
+                    selecionarElemento(null)
+                  }}
+                  onAtualizar={atualizarReferencia}
+                  onRemover={(id) => {
+                    removerReferencia(id)
+                    if (referencias.length <= 1) setModoCamada('componentes')
+                  }}
+                  onIniciarTransacaoHistorico={iniciarTransacaoHistorico}
+                  onFinalizarTransacaoHistorico={finalizarTransacaoHistorico}
                 />
-              ) : null}
+              ))}
 
-              {raiz.length === 0 ? (
+              {raiz.length === 0 && referencias.length === 0 ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 select-none pointer-events-none">
                   <MousePointerClick className="w-10 h-10 mb-2" />
                   <div className="font-bold">Canvas</div>
@@ -1067,6 +1168,7 @@ function executarAcaoMenu(
                   magnetismoAtivo={magnetismoAtivo}
                   aninharAtivo={aninharAtivo}
                   bordaLocalizacaoAtiva={bordaLocalizacaoAtiva}
+                  interacaoAtiva={modoCamada === 'componentes'}
                   selecionado={elementoSelecionadoIds.includes(elementoRaiz.id)}
                   onSelecionar={(id, multi) => (multi && id ? alternarSelecaoElemento(id) : selecionarElemento(id))}
                   onAtualizar={atualizarElemento}
@@ -1334,6 +1436,206 @@ function aplicarFitLado(
   onAplicar({ hPct: novoHPct })
 }
 
+// === REFERENCIA NO CANVAS | inicio ===
+function ReferenciaNoCanvas(props: {
+  referencia: ReferenciaBuilder
+  selecionada: boolean
+  interacaoAtiva: boolean
+  onSelecionar: (id: string) => void
+  onAtualizar: (id: string, parcial: Partial<ReferenciaBuilder>) => void
+  onRemover: (id: string) => void
+  onIniciarTransacaoHistorico: () => void
+  onFinalizarTransacaoHistorico: () => void
+}) {
+  type ModoReferencia = 'mover' | 'resize'
+  type CantoReferencia = 'nw' | 'ne' | 'sw' | 'se'
+
+  const interacaoRef = useRef<null | {
+    modo: ModoReferencia
+    canto?: CantoReferencia
+    startX: number
+    startY: number
+    canvasRect: Retangulo
+    startXPct: number
+    startYPct: number
+    startWPct: number
+    startHPct: number
+  }>(null)
+
+  function iniciarListeners() {
+    window.addEventListener('pointermove', onMoveWindow, { passive: false })
+    window.addEventListener('pointerup', onUpWindow, { passive: false })
+    window.addEventListener('pointercancel', onUpWindow, { passive: false })
+  }
+
+  function removerListeners() {
+    window.removeEventListener('pointermove', onMoveWindow)
+    window.removeEventListener('pointerup', onUpWindow)
+    window.removeEventListener('pointercancel', onUpWindow)
+  }
+
+  function iniciarMover(e: React.PointerEvent) {
+    if (!props.interacaoAtiva) return
+    if ((e.target as HTMLElement).closest('[data-ref-handle="1"]')) return
+
+    const canvas = rectDoCanvas()
+    if (!canvas) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    props.onSelecionar(props.referencia.id)
+    props.onIniciarTransacaoHistorico()
+    interacaoRef.current = {
+      modo: 'mover',
+      startX: e.clientX,
+      startY: e.clientY,
+      canvasRect: { left: canvas.left, top: canvas.top, right: canvas.right, bottom: canvas.bottom, width: canvas.width, height: canvas.height },
+      startXPct: props.referencia.xPct,
+      startYPct: props.referencia.yPct,
+      startWPct: props.referencia.wPct,
+      startHPct: props.referencia.hPct,
+    }
+    iniciarListeners()
+  }
+
+  function iniciarResize(e: React.PointerEvent, canto: CantoReferencia) {
+    if (!props.interacaoAtiva) return
+    const canvas = rectDoCanvas()
+    if (!canvas) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    props.onSelecionar(props.referencia.id)
+    props.onIniciarTransacaoHistorico()
+    interacaoRef.current = {
+      modo: 'resize',
+      canto,
+      startX: e.clientX,
+      startY: e.clientY,
+      canvasRect: { left: canvas.left, top: canvas.top, right: canvas.right, bottom: canvas.bottom, width: canvas.width, height: canvas.height },
+      startXPct: props.referencia.xPct,
+      startYPct: props.referencia.yPct,
+      startWPct: props.referencia.wPct,
+      startHPct: props.referencia.hPct,
+    }
+    iniciarListeners()
+  }
+
+  function dimensoesProporcionais(widthPct: number, ctx: NonNullable<typeof interacaoRef.current>) {
+    const wPct = clamp(widthPct, 3, 100)
+    const hPct = clamp((wPct * ctx.canvasRect.width) / (props.referencia.aspectRatio * ctx.canvasRect.height), 3, 100)
+    return { wPct, hPct }
+  }
+
+  function onMoveWindow(ev: PointerEvent) {
+    const ctx = interacaoRef.current
+    if (!ctx) return
+    ev.preventDefault()
+
+    const dxPct = ((ev.clientX - ctx.startX) / ctx.canvasRect.width) * 100
+    const dyPct = ((ev.clientY - ctx.startY) / ctx.canvasRect.height) * 100
+
+    if (ctx.modo === 'mover') {
+      props.onAtualizar(props.referencia.id, {
+        xPct: clamp(ctx.startXPct + dxPct, 0, 100 - ctx.startWPct),
+        yPct: clamp(ctx.startYPct + dyPct, 0, 100 - ctx.startHPct),
+      })
+      return
+    }
+
+    const canto = ctx.canto ?? 'se'
+    const deltaWidthPct = canto.includes('w') ? -dxPct : dxPct
+    const dimensoes = dimensoesProporcionais(ctx.startWPct + deltaWidthPct, ctx)
+    const xPct = canto.includes('w') ? clamp(ctx.startXPct + (ctx.startWPct - dimensoes.wPct), 0, 100 - dimensoes.wPct) : ctx.startXPct
+    const yPct = canto.includes('n') ? clamp(ctx.startYPct + (ctx.startHPct - dimensoes.hPct), 0, 100 - dimensoes.hPct) : ctx.startYPct
+
+    props.onAtualizar(props.referencia.id, {
+      xPct,
+      yPct,
+      wPct: clamp(dimensoes.wPct, 3, 100 - xPct),
+      hPct: clamp(dimensoes.hPct, 3, 100 - yPct),
+    })
+  }
+
+  function onUpWindow() {
+    interacaoRef.current = null
+    removerListeners()
+    props.onFinalizarTransacaoHistorico()
+  }
+
+  const estilo: CSSProperties = {
+    left: pct(props.referencia.xPct),
+    top: pct(props.referencia.yPct),
+    width: pct(props.referencia.wPct),
+    height: pct(props.referencia.hPct),
+    opacity: props.referencia.opacity,
+    pointerEvents: props.interacaoAtiva ? 'auto' : 'none',
+  }
+
+  return (
+    <div
+      className={
+        'absolute z-[35] select-none overflow-visible ' +
+        (props.interacaoAtiva ? 'cursor-move' : '')
+      }
+      style={estilo}
+      onPointerDown={iniciarMover}
+      onContextMenu={(e) => {
+        if (!props.interacaoAtiva) return
+        e.preventDefault()
+        props.onRemover(props.referencia.id)
+      }}
+      title={props.referencia.nome}
+    >
+      <img
+        src={props.referencia.src}
+        alt={props.referencia.nome}
+        draggable={false}
+        className="w-full h-full object-contain pointer-events-none"
+      />
+
+      {props.selecionada ? (
+        <>
+          <div className="absolute inset-0 border-2 border-amber-400 pointer-events-none" />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              props.onRemover(props.referencia.id)
+            }}
+            className="absolute -top-8 right-0 h-7 px-2 rounded-lg bg-red-600 text-white text-[10px] font-extrabold"
+            title="Remover referência"
+          >
+            Remover
+          </button>
+          <HandleReferencia canto="nw" onDown={(e) => iniciarResize(e, 'nw')} />
+          <HandleReferencia canto="ne" onDown={(e) => iniciarResize(e, 'ne')} />
+          <HandleReferencia canto="sw" onDown={(e) => iniciarResize(e, 'sw')} />
+          <HandleReferencia canto="se" onDown={(e) => iniciarResize(e, 'se')} />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+function HandleReferencia(props: { canto: 'nw' | 'ne' | 'sw' | 'se'; onDown: (e: React.PointerEvent) => void }) {
+  const posicoes: Record<typeof props.canto, string> = {
+    nw: 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize',
+    ne: 'right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize',
+    sw: 'left-0 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize',
+    se: 'right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize',
+  }
+
+  return (
+    <div
+      data-ref-handle="1"
+      className={'absolute z-[90] w-4 h-4 rounded-full bg-amber-400 border-2 border-white shadow ' + posicoes[props.canto]}
+      onPointerDown={props.onDown}
+    />
+  )
+}
+// === REFERENCIA NO CANVAS | fim ===
+
 // === ELEMENTO NO CANVAS | inicio ===
 function ElementoNoCanvas(props: {
   elemento: ElementoBuilder
@@ -1344,6 +1646,7 @@ function ElementoNoCanvas(props: {
   magnetismoAtivo: boolean
   aninharAtivo: boolean
   bordaLocalizacaoAtiva: boolean
+  interacaoAtiva: boolean
   onSelecionar: (id: string | null, multi?: boolean) => void
   onAtualizar: (id: string, parcial: Partial<ElementoBuilder>) => void
   onRemover: (id: string) => void
@@ -1389,16 +1692,18 @@ function ElementoNoCanvas(props: {
   }
 
   function iniciarMover(e: React.PointerEvent) {
+    if (!props.interacaoAtiva) return
     // botão direito abre menu
     if (e.button === 2) return
     if ((e.target as HTMLElement).closest('[data-handle="1"]')) return
 
     e.preventDefault()
     e.stopPropagation()
-    const duplicando = (e.ctrlKey || e.metaKey) && !e.shiftKey
-    const idAlvo = duplicando ? props.onDuplicar(props.elemento.id) : props.elemento.id
+    const duplicarEnquantoArrasta = (e.ctrlKey || e.metaKey) && !e.shiftKey
+    const idAlvo = duplicarEnquantoArrasta ? props.onDuplicar(props.elemento.id) : props.elemento.id
     if (!idAlvo) return
-    props.onSelecionar(idAlvo, !duplicando && e.shiftKey)
+
+    props.onSelecionar(idAlvo, !duplicarEnquantoArrasta && e.shiftKey)
 
     if (props.elemento.moverTravado) return
 
@@ -1425,6 +1730,7 @@ function ElementoNoCanvas(props: {
   }
 
   function iniciarResize(e: React.PointerEvent, alca: Alca) {
+    if (!props.interacaoAtiva) return
     if (props.elemento.resizeTravado) return
     e.preventDefault()
     e.stopPropagation()
@@ -1525,9 +1831,9 @@ function ElementoNoCanvas(props: {
 
     if (ctx.modo === 'mover') {
       if (ev.shiftKey) {
-        const dxPx = Math.abs(ev.clientX - ctx.startX)
-        const dyPx = Math.abs(ev.clientY - ctx.startY)
-        if (dxPx >= dyPx) dyPct = 0
+        const deltaX = Math.abs(ev.clientX - ctx.startX)
+        const deltaY = Math.abs(ev.clientY - ctx.startY)
+        if (deltaX >= deltaY) dyPct = 0
         else dxPct = 0
       }
 
@@ -1684,7 +1990,7 @@ if (props.magnetismoAtivo) {
 
     // === ANINHAMENTO POR CENTRO (B) | inicio ===
     if (ctx.modo === 'mover' && props.aninharAtivo) {
-      const elDom = (document.querySelector(`[data-elemento-id="${ctx.idAlvo}"]`) as HTMLElement | null) ?? ref.current
+      const elDom = (document.querySelector(`[data-elemento-id="${ctx.idAlvo}"]`) as HTMLDivElement | null) ?? ref.current
       if (!elDom) return
 
       const r = elDom.getBoundingClientRect()
@@ -1724,10 +2030,12 @@ if (props.magnetismoAtivo) {
   const possuiBordaVisivel = (props.elemento.borderWidthPx ?? 0) > 0 && props.elemento.corBorda.hex !== 'transparent'
   const possuiCorTextoCustom = props.elemento.corTexto.hex !== 'inherit'
   const possuiCorFundoCustom = props.elemento.corFundo.hex !== 'transparent'
-  const sombraElemento = [
+  const boxShadow = [
     props.bordaLocalizacaoAtiva ? 'inset 0 0 0 1px #000, 0 0 0 1px #000' : '',
     props.selecionado ? '0 0 0 2px rgba(99,102,241,.25), 0 10px 25px rgba(2,6,23,.18)' : obterSombraBuilder(props.elemento.sombra),
-  ].filter(Boolean).join(', ')
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   const estilo: CSSProperties = {
     left: pct(props.elemento.xPct),
@@ -1745,7 +2053,7 @@ if (props.magnetismoAtivo) {
     borderWidth: possuiBordaVisivel ? (props.elemento.borderWidthPx ?? 0) : 0,
     borderRadius: 0,
     position: 'absolute',
-    boxShadow: sombraElemento,
+    boxShadow,
     touchAction: 'none',
     userSelect: 'none',
   }
@@ -1767,21 +2075,25 @@ if (props.magnetismoAtivo) {
         aplicarFitLado(alvo, props.elemento, props.mapa, (parcial) => props.onAtualizar(props.elemento.id, parcial))
       }}
       onContextMenu={(e) => {
+        if (!props.interacaoAtiva) return
         e.preventDefault()
         e.stopPropagation()
         props.onAbrirMenuContexto(props.elemento.id, e.clientX, e.clientY)
       }}
       onDragOver={(e) => {
+        if (!props.interacaoAtiva) return
         if (!ehContainer(props.elemento.tipo)) return
         e.preventDefault()
         e.stopPropagation()
         e.dataTransfer.dropEffect = 'copy'
       }}
       onDrop={(e) => {
+        if (!props.interacaoAtiva) return
         if (!ehContainer(props.elemento.tipo)) return
         props.onDropNovo(e, props.elemento.id)
       }}
       onPointerDownCapture={(e) => {
+        if (!props.interacaoAtiva) return
         // traz para frente apenas quando o clique é no próprio bloco (não em filhos)
         if (e.target === e.currentTarget) props.onTrazerParaFrente(props.elemento.id)
       }}
@@ -1809,6 +2121,7 @@ if (props.magnetismoAtivo) {
           magnetismoAtivo={props.magnetismoAtivo}
           aninharAtivo={props.aninharAtivo}
           bordaLocalizacaoAtiva={props.bordaLocalizacaoAtiva}
+          interacaoAtiva={props.interacaoAtiva}
           selecionado={props.elementoSelecionadoIds.includes(f.id)}
           onSelecionar={props.onSelecionar}
           onAtualizar={props.onAtualizar}
@@ -1827,7 +2140,7 @@ if (props.magnetismoAtivo) {
       {/* === FILHOS | fim === */}
 
       {/* === HANDLES (BORDAS + CANTOS) | inicio === */}
-      {props.selecionado && !props.elemento.resizeTravado ? (
+      {!props.elemento.resizeTravado ? (
         <>
           <HandleBorda dir="n" onDown={(e) => iniciarResize(e, 'n')} />
           <HandleBorda dir="s" onDown={(e) => iniciarResize(e, 's')} />

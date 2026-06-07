@@ -1,8 +1,8 @@
-import type { CorAplicada, ElementoBuilder, EstadoBuilder, TipoElemento, TipoPresetResolucao, TipoStack } from '@/types/tiposBuilder'
+import type { CorAplicada, ElementoBuilder, EstadoBuilder, ReferenciaBuilder, TipoElemento, TipoPresetResolucao, TipoStack } from '@/types/tiposBuilder'
 
 export type SnapshotBuilder = Pick<
   EstadoBuilder,
-  'stack' | 'presetResolucao' | 'resolucao' | 'magnetismoAtivo' | 'aninharAtivo' | 'elementos' | 'elementoSelecionadoId'
+  'stack' | 'presetResolucao' | 'resolucao' | 'magnetismoAtivo' | 'aninharAtivo' | 'elementos' | 'elementoSelecionadoId' | 'referencias' | 'referenciaSelecionadaId'
 >
 
 export type ClipboardElementos = {
@@ -24,6 +24,8 @@ const SNAPSHOT_PADRAO: SnapshotBuilder = {
   aninharAtivo: true,
   elementos: [],
   elementoSelecionadoId: null,
+  referencias: [],
+  referenciaSelecionadaId: null,
 }
 
 const COR_BORDA_PADRAO: CorAplicada = { tokenTailwind: null, hex: 'transparent' }
@@ -117,10 +119,42 @@ function normalizarElementos(elementos: unknown): ElementoBuilder[] {
     .filter((item): item is ElementoBuilder => !!item)
 }
 
+export function clonarReferenciaBuilder(referencia: ReferenciaBuilder): ReferenciaBuilder {
+  return { ...referencia }
+}
+
+function normalizarReferenciaBuilder(valor: unknown): ReferenciaBuilder | null {
+  if (!ehObjeto(valor)) return null
+
+  const aspectRatio = lerNumero(valor.aspectRatio, 1)
+
+  return {
+    id: lerTexto(valor.id, gerarIdUnico()),
+    nome: lerTexto(valor.nome, 'Referência'),
+    src: lerTexto(valor.src),
+    xPct: clamp(lerNumero(valor.xPct, 5), 0, 100),
+    yPct: clamp(lerNumero(valor.yPct, 5), 0, 100),
+    wPct: clamp(lerNumero(valor.wPct, 45), 1, 100),
+    hPct: clamp(lerNumero(valor.hPct, 45 / Math.max(0.01, aspectRatio)), 1, 100),
+    aspectRatio: Math.max(0.01, aspectRatio),
+    opacity: clamp(lerNumero(valor.opacity, 0.55), 0.05, 1),
+  }
+}
+
+function normalizarReferencias(referencias: unknown): ReferenciaBuilder[] {
+  if (!Array.isArray(referencias)) return []
+  return referencias
+    .map((item) => normalizarReferenciaBuilder(item))
+    .filter((item): item is ReferenciaBuilder => !!item && item.src.trim().length > 0)
+}
+
 export function criarSnapshotBuilder(snapshot: SnapshotBuilder): SnapshotBuilder {
   const elementos = snapshot.elementos.map((elemento) => clonarElementoBuilder(elemento))
   const ids = new Set(elementos.map((elemento) => elemento.id))
   const elementoSelecionadoId = snapshot.elementoSelecionadoId && ids.has(snapshot.elementoSelecionadoId) ? snapshot.elementoSelecionadoId : null
+  const referencias = snapshot.referencias.map((referencia) => clonarReferenciaBuilder(referencia))
+  const idsReferencias = new Set(referencias.map((referencia) => referencia.id))
+  const referenciaSelecionadaId = snapshot.referenciaSelecionadaId && idsReferencias.has(snapshot.referenciaSelecionadaId) ? snapshot.referenciaSelecionadaId : null
 
   return {
     stack: snapshot.stack,
@@ -130,6 +164,8 @@ export function criarSnapshotBuilder(snapshot: SnapshotBuilder): SnapshotBuilder
     aninharAtivo: snapshot.aninharAtivo,
     elementos,
     elementoSelecionadoId,
+    referencias,
+    referenciaSelecionadaId,
   }
 }
 
@@ -149,6 +185,10 @@ export function extrairSnapshotBuilder(data: unknown): SnapshotBuilder | null {
   const ids = new Set(elementos.map((elemento) => elemento.id))
   const elementoSelecionadoId =
     typeof bruto.elementoSelecionadoId === 'string' && ids.has(bruto.elementoSelecionadoId) ? bruto.elementoSelecionadoId : null
+  const referencias = normalizarReferencias(bruto.referencias)
+  const idsReferencias = new Set(referencias.map((referencia) => referencia.id))
+  const referenciaSelecionadaId =
+    typeof bruto.referenciaSelecionadaId === 'string' && idsReferencias.has(bruto.referenciaSelecionadaId) ? bruto.referenciaSelecionadaId : null
 
   return {
     stack: lerTexto(bruto.stack, SNAPSHOT_PADRAO.stack) as TipoStack,
@@ -164,6 +204,8 @@ export function extrairSnapshotBuilder(data: unknown): SnapshotBuilder | null {
     aninharAtivo: typeof bruto.aninharAtivo === 'boolean' ? bruto.aninharAtivo : SNAPSHOT_PADRAO.aninharAtivo,
     elementos,
     elementoSelecionadoId,
+    referencias,
+    referenciaSelecionadaId,
   }
 }
 
@@ -192,11 +234,21 @@ export function mesclarSnapshotBuilder(base: SnapshotBuilder, recebido: Snapshot
   const elementoSelecionadoId =
     (recebido.elementoSelecionadoId ? mapaIds.get(recebido.elementoSelecionadoId) : null) ??
     (novosElementos[0]?.id ?? base.elementoSelecionadoId)
+  const idsReferenciasExistentes = new Set(base.referencias.map((referencia) => referencia.id))
+  const novasReferencias = recebido.referencias.map((referencia) => ({
+    ...clonarReferenciaBuilder(referencia),
+    id: gerarIdUnico(idsReferenciasExistentes),
+    xPct: clamp(referencia.xPct + offset, 0, Math.max(0, 100 - referencia.wPct)),
+    yPct: clamp(referencia.yPct + offset, 0, Math.max(0, 100 - referencia.hPct)),
+  }))
+  const referenciaSelecionadaId = novasReferencias[0]?.id ?? base.referenciaSelecionadaId
 
   return criarSnapshotBuilder({
     ...base,
     elementos: [...base.elementos.map((elemento) => clonarElementoBuilder(elemento)), ...novosElementos],
     elementoSelecionadoId,
+    referencias: [...base.referencias.map((referencia) => clonarReferenciaBuilder(referencia)), ...novasReferencias],
+    referenciaSelecionadaId,
   })
 }
 
